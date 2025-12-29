@@ -6,17 +6,6 @@ import streamlit as st
 
 from proposal_core import load_price_options, parse_data, render_html, generate_excel_bytes
 
-# -----------------------------
-# 보안: 비밀번호는 Streamlit Community Cloud "Secrets"로만 관리
-# -----------------------------
-# Cloud에서 App settings -> Secrets에 다음을 넣으세요:
-# APP_PASSWORD="nk2026"
-#
-# 로컬에서만 테스트할 때는 (git에 커밋하지 말고)
-# .streamlit/secrets.toml 파일을 만들고 동일하게 넣으면 됩니다.
-#
-# 공식 문서에서도 secrets.toml은 저장소에 커밋하지 말 것을 권장합니다.
-# https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/secrets-management
 
 def require_password():
     app_pw = st.secrets.get("APP_PASSWORD", None)
@@ -160,3 +149,4 @@ with right:
     )
 
 st.caption("참고: Streamlit Community Cloud에서는 파일 경로가 저장소 루트 기준 상대경로여야 합니다.")
+
