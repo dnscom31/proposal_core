@@ -1,5 +1,24 @@
 # app_streamlit.py
 import streamlit as st
+
+APP_PASSWORD = "nk2026"
+
+def require_password():
+    if "authed" not in st.session_state:
+        st.session_state.authed = False
+
+    if not st.session_state.authed:
+        pw = st.text_input("비밀번호", type="password")
+        if st.button("로그인"):
+            if pw == APP_PASSWORD:
+                st.session_state.authed = True
+                st.rerun()
+            else:
+                st.error("비밀번호가 올바르지 않습니다.")
+        st.stop()
+
+require_password()
+
 import streamlit.components.v1 as components
 import re
 
@@ -162,3 +181,4 @@ if st.button("2) HTML 미리보기/다운로드 생성"):
         file_name=xlsx_filename,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
