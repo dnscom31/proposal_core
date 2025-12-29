@@ -230,7 +230,7 @@ def render_html(plans, data, summary, company, mgr_name, mgr_phone, mgr_email):
     )
     text_c = (
         "[A] 뇌MRI+A  [D][혈액]스마트암(6/7종)<br>"
-        "[B] 경추MRI [E][혈액]선천적유전자34종 (3.0T)<br>"
+        "[B] 경추MRI [E][혈액]선천적유전자34종<br>"
         "[C] 요추MRI [F][혈액]에피클락(생체나이)  "
         "A그룹 4개 ⇄ C그룹 1개 변경 가능"
     )
@@ -683,29 +683,27 @@ def generate_excel_bytes(plans, data, summary, company, mgr_name, mgr_phone, mgr
         "[04] 뇌CT  [13] (여) HPV바이러스\n"
         "[05] 폐CT  [14] (여)(혈액)마스토체크:유방암\n"
         "[06] 요추CT  [15] (혈액)NK뷰키트\n"
-        "[07] 경추CT  [16] NK면역검사\n"
-        "[08] (혈액)알츠온(치매)  [17] (혈액)피검사(간염)\n"
-        "[09] (혈액)암 6종  [18] (혈액)암 8종"
+        "[07] 경추CT  [16] (여)(혈액)여성호르몬\n"
+        "[08] 심장MDCT  [17] (남)(혈액)남성호르몬\n"
+        "[09] 복부비만CT"
     )
+
     write_group_box("A 그룹 (정밀)", a_body, "566573", content_rows=4, row_height=40)
 
     b_body = (
-        "[A] A그룹 2개 ⇄ B그룹 1개 변경 가능\n"
-        "[01] 전립선초음파  [07] MRA(뇌혈관) (3.0T)\n"
-        "[02] 심장초음파  [08] 뇌MRI (3.0T)\n"
-        "[03] MRI(요추) (3.0T)  [09] MRI(경추) (3.0T)\n"
-        "[04] MRI(뇌) (3.0T)  [10] (여)유방초음파\n"
-        "[05] CT(대장)  [11] (여)인유두종 바이러스 검사\n"
-        "[06] (혈액)유전자 30종"
+        "[가] 대장수면내시경  [마] 부정맥검사S-PATCH\n"
+        "[나] 심장초음파  [바] [혈액]알레르기검사\n"
+        "[다] (여)유방초음파 [사] [혈액]알츠온:치매위험도\n"
+        "[라] [분변]대장암_얼리텍 [아][혈액]간섬유화\n"       
+        "A그룹 2개 ⇄ B그룹 1개 변경 가능"
     )
+
     write_group_box("B 그룹 (특화)", b_body, "7F8C8D", content_rows=4, row_height=25)
 
     c_body = (
-        "[A] A그룹 4개 ⇄ C그룹 1개 변경 가능\n"
-        "[B] A그룹 2개 ⇄ B그룹 1개로 변경 가능\n"
-        "[01] PET-CT  [04] (여)유방MRI\n"
-        "[02] MRI(뇌+혈관) (3.0T)  [05] MRI(복부) (3.0T)\n"
-        "[03] MRI(심장) (3.0T)  [D] (여)(혈액)스마트암검사(유방) - #60만원 상당#"
+        "[A] 뇌MRI+A  [D][혈액]스마트암(6/7종)\n"
+        "[B] 경추MRI [E][혈액]선천적유전자34종\n"
+        "[C] 요추MRI [F][혈액]에피클락(생체나이)\n"         
     )
     write_group_box("C 그룹 (VIP)", c_body, "2C3E50", content_rows=4, row_height=21)
 
@@ -856,4 +854,5 @@ def generate_excel_bytes(plans, data, summary, company, mgr_name, mgr_phone, mgr
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue()
+
 
