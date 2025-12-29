@@ -1,148 +1,129 @@
 # app_streamlit.py
+# -*- coding: utf-8 -*-
+
+import io
 import streamlit as st
 
-APP_PASSWORD = "nk2026"
+from proposal_core import load_price_options, parse_data, render_html, generate_excel_bytes
+
+# -----------------------------
+# 보안: 비밀번호는 Streamlit Community Cloud "Secrets"로만 관리
+# -----------------------------
+# Cloud에서 App settings -> Secrets에 다음을 넣으세요:
+# 
+#
+# 로컬에서만 테스트할 때는 (git에 커밋하지 말고)
+# .streamlit/secrets.toml 파일을 만들고 동일하게 넣으면 됩니다.
+#
+# 공식 문서에서도 secrets.toml은 저장소에 커밋하지 말 것을 권장합니다.
+# https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/secrets-management
 
 def require_password():
-    if "authed" not in st.session_state:
-        st.session_state.authed = False
-
-    if not st.session_state.authed:
-        pw = st.text_input("비밀번호", type="password")
-        if st.button("로그인"):
-            if pw == APP_PASSWORD:
-                st.session_state.authed = True
-                st.rerun()
-            else:
-                st.error("비밀번호가 올바르지 않습니다.")
+    app_pw = st.secrets.get("APP_PASSWORD", None)
+    if not app_pw:
+        st.error("APP_PASSWORD가 설정되어 있지 않습니다. (Streamlit Cloud > App settings > Secrets)")
         st.stop()
 
+    if st.session_state.get("authed", False):
+        return
+
+    st.subheader("접속 비밀번호")
+    typed = st.text_input("비밀번호", type="password")
+    if st.button("로그인"):
+        if typed == app_pw:
+            st.session_state["authed"] = True
+            st.rerun()
+        else:
+            st.error("비밀번호가 올바르지 않습니다.")
+            st.stop()
+    else:
+        st.stop()
+
+
+# -----------------------------
+# 앱 시작
+# -----------------------------
+st.set_page_config(page_title="2026 건강검진 제안서 생성기", layout="wide")
 require_password()
 
-import streamlit.components.v1 as components
-import re
-
-from proposal_core import (
-    load_price_options,
-    parse_data,
-    render_html,
-    generate_excel_bytes,
-)
+st.title("2026 건강검진 제안서 생성기 (Streamlit)")
 
 TEMPLATE_XLSX = "2025 건강검진 견적서_표준.xlsx"
 
+# 옵션 로드(캐시)
+@st.cache_data(show_spinner=False)
+def _load_options(path: str):
+    return load_price_options(path)
 
-def make_default_subplan(price_txt, defaults, i, count):
-    """
-    원본 update_sub_plans()의 기본 생성 규칙을 웹에서 재현
-    """
-    base_a, base_b, base_c = defaults["a"], defaults["b"], defaults["c"]
-
-    p_name = f"{price_txt}"
-    if i == 1:
-        p_name += " (B형)"
-    elif i == 2:
-        p_name += " (C형)"
-    elif count > 1:
-        p_name += "-1"
-
-    curr_a, curr_b, curr_c = base_a, base_b, base_c
-    is_valid = True
-
-    if i == 1:
-        curr_a = base_a - 2
-        curr_b = base_b + 1
-        if curr_a < 0:
-            is_valid = False
-    elif i == 2:
-        curr_a = base_a - 4
-        curr_c = base_c + 1
-        if curr_a < 0:
-            is_valid = False
-
-    str_a = f"선택 {curr_a}" if curr_a > 0 else "-"
-    str_b = f"선택 {curr_b}" if curr_b > 0 else "-"
-    str_c = f"선택 {curr_c}" if curr_c > 0 else "-"
-    if not is_valid:
-        str_a = "-"
-
-    return p_name, str_a, str_b, str_c
-
-
-st.set_page_config(page_title="2026 기업검진 제안서 생성기", layout="wide")
-st.title("2026 기업 건강검진 제안서 (웹 버전)")
-
-# 엑셀에서 가격 옵션 로드
 try:
-    header_row, options = load_price_options(TEMPLATE_XLSX)
+    header_row, options = _load_options(TEMPLATE_XLSX)
 except Exception as e:
-    st.error(f"엑셀 템플릿을 읽을 수 없습니다: {e}")
+    st.error(f"템플릿 엑셀을 읽을 수 없습니다: {e}")
     st.stop()
 
+# 회사/담당자
 with st.sidebar:
-    st.subheader("제안 정보 입력")
-    company = st.text_input("기업명(고객사)", value="")
-    mgr_name = st.text_input("담당자명", value="")
-    mgr_phone = st.text_input("연락처", value="")
-    mgr_email = st.text_input("이메일", value="")
+    st.header("기본 정보")
+    company = st.text_input("회사명", value="")
+    mgr_name = st.text_input("담당자 이름", value="")
+    mgr_phone = st.text_input("담당자 연락처", value="")
+    mgr_email = st.text_input("담당자 이메일", value="")
 
-st.subheader("1) 금액대 선택 및 플랜 구성")
+st.divider()
 
-plans = []
+st.subheader("플랜 구성")
+st.caption("원하시는 금액대(컬럼)를 선택하고, 플랜명을 지정하고 A/B/C 규칙(예: '선택 5', '-' 등)을 입력합니다.")
 
-for opt in options:
-    defaults = opt["defaults"]
-    info = []
-    if defaults["a"] > 0:
-        info.append(f"A{defaults['a']}")
-    if defaults["b"] > 0:
-        info.append(f"B{defaults['b']}")
-    if defaults["c"] > 0:
-        info.append(f"C{defaults['c']}")
-    label = f"{opt['price_txt']} ({'/'.join(info)})" if info else opt["price_txt"]
+# 최대 4개 플랜 UI
+max_plans = 4
+selected_plans = []
 
-    with st.expander(label, expanded=False):
-        use = st.checkbox("이 금액대 사용", key=f"use_{opt['col_idx']}")
-        if not use:
-            continue
+cols = st.columns(max_plans)
+for i in range(max_plans):
+    with cols[i]:
+        st.markdown(f"### 플랜 {i+1}")
+        use = st.checkbox("사용", value=(i == 0), key=f"use_{i}")
 
-        count = st.number_input(
-            "개 플랜 생성(1~3)",
-            min_value=1,
-            max_value=3,
-            value=1,
-            step=1,
-            key=f"count_{opt['col_idx']}",
-        )
+        price_labels = [o["price_txt"] for o in options]
+        price = st.selectbox("금액대", price_labels, index=min(i, len(price_labels) - 1), key=f"price_{i}")
+        plan_name = st.text_input("플랜명", value=price, key=f"name_{i}")
 
-        st.caption("플랜명 및 A/B/C 선택 규칙을 필요에 따라 수정할 수 있습니다.")
-        for i in range(int(count)):
-            default_name, default_a, default_b, default_c = make_default_subplan(opt["price_txt"], defaults, i, int(count))
+        # 선택한 가격 옵션 찾기
+        opt = next(o for o in options if o["price_txt"] == price)
+        defaults = opt["defaults"]
+        a_rule = st.text_input("A그룹 규칙", value=f"선택 {defaults['a']}" if defaults["a"] else "-", key=f"a_{i}")
+        b_rule = st.text_input("B그룹 규칙", value=f"선택 {defaults['b']}" if defaults["b"] else "-", key=f"b_{i}")
+        c_rule = st.text_input("C그룹 규칙", value=f"선택 {defaults['c']}" if defaults["c"] else "-", key=f"c_{i}")
 
-            c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
-            name = c1.text_input("플랜명", value=default_name, key=f"name_{opt['col_idx']}_{i}")
-            a_rule = c2.text_input("A선택", value=default_a, key=f"a_{opt['col_idx']}_{i}")
-            b_rule = c3.text_input("B선택", value=default_b, key=f"b_{opt['col_idx']}_{i}")
-            c_rule = c4.text_input("C선택", value=default_c, key=f"c_{opt['col_idx']}_{i}")
-
-            plans.append({
+        if use:
+            selected_plans.append({
+                "name": plan_name.strip() or price,
                 "col_idx": opt["col_idx"],
-                "original_price": opt["price_txt"],
-                "name": name.strip() or opt["price_txt"],
                 "a_rule": a_rule.strip(),
                 "b_rule": b_rule.strip(),
                 "c_rule": c_rule.strip(),
             })
 
-if st.button("2) HTML 미리보기/다운로드 생성"):
-    if not plans:
-        st.warning("최소 하나의 플랜을 선택해주세요.")
-        st.stop()
+if not selected_plans:
+    st.warning("최소 1개 플랜을 선택하세요.")
+    st.stop()
 
-    data, summary = parse_data(TEMPLATE_XLSX, header_row, plans)
+# 데이터 파싱(캐시)
+@st.cache_data(show_spinner=True)
+def _parse(path: str, header_row_: int, plans_):
+    return parse_data(path, header_row_, plans_)
 
+data, summary = _parse(TEMPLATE_XLSX, header_row, selected_plans)
+
+st.divider()
+st.subheader("미리보기 / 다운로드")
+
+left, right = st.columns([1, 1])
+
+with left:
+    st.markdown("#### HTML 제안서 미리보기")
     html = render_html(
-        plans=plans,
+        plans=selected_plans,
         data=data,
         summary=summary,
         company=company,
@@ -150,23 +131,19 @@ if st.button("2) HTML 미리보기/다운로드 생성"):
         mgr_phone=mgr_phone,
         mgr_email=mgr_email,
     )
-
-    st.subheader("미리보기")
-    components.html(html, height=900, scrolling=True)
-
-    safe_company = re.sub(r"[^0-9A-Za-z가-힣_-]+", "_", (company.strip() or "기업"))
-    html_filename = f"2026_{safe_company}_건강검진_제안서.html"
-    xlsx_filename = f"2026_{safe_company}_건강검진_제안서.xlsx"
+    st.components.v1.html(html, height=720, scrolling=True)
 
     st.download_button(
-        label="HTML 파일 다운로드",
+        "HTML 다운로드",
         data=html.encode("utf-8"),
-        file_name=html_filename,
+        file_name=f"2026_{company or '기업'}_건강검진_제안서.html",
         mime="text/html",
     )
 
-    excel_bytes = generate_excel_bytes(
-        plans=plans,
+with right:
+    st.markdown("#### Excel 제안서 다운로드")
+    xlsx_bytes = generate_excel_bytes(
+        plans=selected_plans,
         data=data,
         summary=summary,
         company=company,
@@ -176,9 +153,10 @@ if st.button("2) HTML 미리보기/다운로드 생성"):
     )
 
     st.download_button(
-        label="엑셀(.xlsx) 다운로드",
-        data=excel_bytes,
-        file_name=xlsx_filename,
+        "Excel 다운로드",
+        data=xlsx_bytes,
+        file_name=f"2026_{company or '기업'}_건강검진_제안서.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
+st.caption("참고: Streamlit Community Cloud에서는 파일 경로가 저장소 루트 기준 상대경로여야 합니다.")
