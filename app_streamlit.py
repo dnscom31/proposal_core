@@ -63,7 +63,7 @@ def load_excel_options():
 
 def main():
     # 로그인 성공 시에만 이 함수가 실행됨
-    st.title("🏥 2026 기업 건강검진 제안서 생성기")
+    st.title("🏥 2026 기업 건강검진 견적서 생성기")
 
     # 1. 엑셀 로드
     header_row, options = load_excel_options()
@@ -191,3 +191,4 @@ if __name__ == "__main__":
     # 비밀번호 확인이 통과되었을 때만 main() 실행
     if check_password():
         main()
+
