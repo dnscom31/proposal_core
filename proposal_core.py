@@ -334,7 +334,7 @@ def render_html_string(plans, data, summary, info):
                     <div style="flex: 0.8; border-left:3px solid #ddd; padding-left:20px; color:#2c3e50;">
                         <span style="font-weight:bold; display:block; margin-bottom:8px; font-size:13px; color:#c0392b;">[비고: MRI 정밀 장비 안내]</span>
                         <span style="font-weight:bold; font-size:14px; color:#000;">Full Protocol Scan 시행</span><br>
-                        <span style="color:#666; font-size:11px;">(진단적 의미 없는 검사를 하지 않습니다.)</span><br>
+                        <span style="color:#666; font-size:11px;">(진단적 가치 없는 검사는 하지 않습니다.)</span><br>
                         <span class="highlight-text" style="font-size:14px;">최신 3.0T MRI 장비 보유</span>
                     </div>
                 </div>
@@ -387,10 +387,10 @@ def render_html_string(plans, data, summary, info):
                             <div class="grid-header header-c">C 그룹 (VIP)</div>
                             <div class="grid-content-list">
                                 <div>[A] 뇌MRI+MRA</div> 
-                                <div style="letter-spacing:-1.5px; white-space:nowrap;">[D] [혈액]스마트암검사(남6/여7종)</div>
-                                <div>[G] 췌장MRI</div> <div>[E] [혈액]선천적 유전자검사</div>
-                                <div>[B] 경추MRI</div> <div>[F] [혈액]에피클락 (생체나이)</div>
-                                <div>[C] 요추MRI</div>
+                                <div style="letter-spacing:-1.5px; white-space:nowrap;">[E] [혈액]스마트암검사(남6/여7종)</div>
+                                <div>[B] 췌장MRI</div> <div>[F] [혈액]선천적 유전자검사</div>
+                                <div>[C] 경추MRI</div> <div>[G] [혈액]에피클락 (생체나이)</div>
+                                <div>[D] 요추MRI</div>
                             </div>
                         </div>
                     </div>
@@ -513,7 +513,7 @@ def generate_excel_bytes(plans, data, summary, info):
     text_a = "[01] 갑상선초음파  [10] 골다공증QCT+비타민D\n[02] 경동맥초음파  [11] 혈관협착도ABI\n[03] (여)경질초음파  [12] (여)액상 자궁경부세포진\n[04] 뇌CT  [13] (여) HPV바이러스\n[05] 폐CT  [14] (여)(혈액)마스토체크:유방암\n[06] 요추CT  [15] (혈액)NK뷰키트\n[07] 경추CT  [16] (여)(혈액)여성호르몬\n[08] 심장MDCT  [17] (남)(혈액)남성호르몬\n[09] 복부비만CT"
     text_b = "[가] 대장수면내시경  [마] 부정맥검사S-PATCH\n[나] 심장초음파  [바] [혈액]알레르기검사\n[다] (여)유방초음파  [사] [혈액]알츠온:치매위험도\n[라] [분변]대장암_얼리텍  [아] [혈액]간섬유화검사\n[자] 폐렴예방접종:15가"
     # [수정됨] C그룹에 췌장MRI 추가
-    text_c = "[A] 뇌MRI+MRA  [D] [혈액]스마트암검사(남6/여7종)\n[G] 췌장MRI  [E] [혈액]선천적 유전자검사\n[B] 경추MRI  [F] [혈액]에피클락 (생체나이)\n[C] 요추MRI"
+    text_c = "[A] 뇌MRI+MRA  [E] [혈액]스마트암검사(남6/여7종)\n[B] 췌장MRI  [F] [혈액]선천적 유전자검사\n[C] 경추MRI  [G] [혈액]에피클락 (생체나이)\n[D] 요추MRI"
 
     box_start_row = current_row
     ws.cell(row=current_row, column=1, value="공통 항목 (위내시경 포함)").font = Font(bold=True, color="FFFFFF")
@@ -652,4 +652,5 @@ def generate_excel_bytes(plans, data, summary, info):
     wb.save(output)
     output.seek(0)
     return output.getvalue()
+
 
