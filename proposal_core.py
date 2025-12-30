@@ -388,8 +388,9 @@ def render_html_string(plans, data, summary, info):
                             <div class="grid-content-list">
                                 <div>[A] 뇌MRI+MRA</div> 
                                 <div style="letter-spacing:-1.5px; white-space:nowrap;">[D] [혈액]스마트암검사(남6/여7종)</div>
-                                <div>[B] 경추MRI</div> <div>[E] [혈액]선천적 유전자검사</div>
-                                <div>[C] 요추MRI</div> <div>[F] [혈액]에피클락 (생체나이)</div>
+                                <div>[G] 췌장MRI</div> <div>[E] [혈액]선천적 유전자검사</div>
+                                <div>[B] 경추MRI</div> <div>[F] [혈액]에피클락 (생체나이)</div>
+                                <div>[C] 요추MRI</div>
                             </div>
                         </div>
                     </div>
@@ -511,7 +512,8 @@ def generate_excel_bytes(plans, data, summary, info):
     text_common = "간기능 | 간염 | 순환기계 | 당뇨 | 췌장기능 | 철결핍성 | 빈혈 | 혈액질환 | 전해질 | 신장기능 | 골격계질환\n감염성 | 갑상선기능 | 부갑상선기능 | 종양표지자 | 소변 등 80여종 혈액(소변)검사\n심전도 | 신장 | 체중 | 혈압 | 시력 | 청력 | 체성분 | 건강유형분석 | 폐기능 | 안저 | 안압\n혈액점도검사 | 유전자20종 | 흉부X-ray | 복부초음파 | 위수면내시경\n(여)자궁경부세포진 | (여)유방촬영 - #30세이상 권장#"
     text_a = "[01] 갑상선초음파  [10] 골다공증QCT+비타민D\n[02] 경동맥초음파  [11] 혈관협착도ABI\n[03] (여)경질초음파  [12] (여)액상 자궁경부세포진\n[04] 뇌CT  [13] (여) HPV바이러스\n[05] 폐CT  [14] (여)(혈액)마스토체크:유방암\n[06] 요추CT  [15] (혈액)NK뷰키트\n[07] 경추CT  [16] (여)(혈액)여성호르몬\n[08] 심장MDCT  [17] (남)(혈액)남성호르몬\n[09] 복부비만CT"
     text_b = "[가] 대장수면내시경  [마] 부정맥검사S-PATCH\n[나] 심장초음파  [바] [혈액]알레르기검사\n[다] (여)유방초음파  [사] [혈액]알츠온:치매위험도\n[라] [분변]대장암_얼리텍  [아] [혈액]간섬유화검사\n[자] 폐렴예방접종:15가"
-    text_c = "[A] 뇌MRI+MRA  [D] [혈액]스마트암검사(남6/여7종)\n[B] 경추MRI  [E] [혈액]선천적 유전자검사\n[C] 요추MRI  [F] [혈액]에피클락 (생체나이)"
+    # [수정됨] C그룹에 췌장MRI 추가
+    text_c = "[A] 뇌MRI+MRA  [D] [혈액]스마트암검사(남6/여7종)\n[G] 췌장MRI  [E] [혈액]선천적 유전자검사\n[B] 경추MRI  [F] [혈액]에피클락 (생체나이)\n[C] 요추MRI"
 
     box_start_row = current_row
     ws.cell(row=current_row, column=1, value="공통 항목 (위내시경 포함)").font = Font(bold=True, color="FFFFFF")
@@ -547,7 +549,6 @@ def generate_excel_bytes(plans, data, summary, info):
         draw_box_border(ws, b_start, current_row+3, 1, last_col)
         current_row += 4
 
-    # [수정됨] B그룹 높이 23으로 변경
     write_group_box("A 그룹\n(정밀)", text_a, "566573", 39)
     write_group_box("B 그룹\n(특화)", text_b, "7F8C8D", 23)
     write_group_box("C 그룹\n(VIP)", text_c, "2C3E50", 15)
