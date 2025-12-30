@@ -1,260 +1,141 @@
 # app_streamlit.py
-import json
-from pathlib import Path
-
 import streamlit as st
-from streamlit_local_storage import LocalStorage
-
-from proposal_core import (
-    load_price_options,
-    parse_data,
-    create_summary_table,
-    render_html,
-    generate_excel_bytes,
-)
+from pathlib import Path
+from proposal_core import load_price_options, parse_data_from_excel, render_html_string, generate_excel_bytes
 
 EXCEL_FILENAME = "2025 건강검진 견적서_표준.xlsx"
-STATE_KEY = "proposal.state.v1"
 
+st.set_page_config(page_title="2026 기업건강검진 제안서 생성기", layout="wide")
 
-def _safe_json_loads(v):
-    if v is None:
-        return None
-    if isinstance(v, (dict, list)):
-        return v
-    try:
-        return json.loads(v)
-    except Exception:
-        return None
-
-
-def load_state(localS: LocalStorage):
-    if st.session_state.get("_state_loaded"):
-        return
-
-    raw = localS.getItem(STATE_KEY)
-    state = _safe_json_loads(raw)
-    if not isinstance(state, dict):
-        return
-
-    for k in ("company", "mgr_name", "mgr_phone", "mgr_email"):
-        if k in state and not st.session_state.get(k):
-            st.session_state[k] = state[k]
-
-    saved_prices = state.get("prices", {})
-    if isinstance(saved_prices, dict):
-        st.session_state["prices"] = saved_prices
-
-    st.session_state["_state_loaded"] = True
-
-
-def save_state(localS: LocalStorage):
-    prices = st.session_state.get("prices", {})
-    state = {
-        "company": st.session_state.get("company", ""),
-        "mgr_name": st.session_state.get("mgr_name", ""),
-        "mgr_phone": st.session_state.get("mgr_phone", ""),
-        "mgr_email": st.session_state.get("mgr_email", ""),
-        "prices": prices,
-    }
-    localS.setItem(STATE_KEY, json.dumps(state, ensure_ascii=False))
-
-
-def require_password():
-    app_pw = st.secrets.get("APP_PASSWORD")
-    if not app_pw:
-        st.error("Streamlit Secrets에 APP_PASSWORD를 설정해야 합니다.")
-        st.stop()
-
-    if st.session_state.get("authed"):
-        return
-
-    pw = st.text_input("비밀번호", type="password")
-    if pw and pw == app_pw:
-        st.session_state["authed"] = True
-        st.rerun()
-    elif pw:
-        st.error("비밀번호가 올바르지 않습니다.")
-        st.stop()
-    else:
-        st.stop()
-
+@st.cache_data
+def load_excel_options():
+    excel_path = Path(EXCEL_FILENAME)
+    if not excel_path.exists():
+        return None, None
+    return load_price_options(str(excel_path))
 
 def main():
-    st.set_page_config(page_title="건강검진 제안서 생성기", layout="wide")
-    require_password()
+    st.title("🏥 2026 기업 건강검진 제안서 생성기")
 
-    localS = LocalStorage()
-    load_state(localS)
-
-    st.title("건강검진 제안서 생성기")
-
-    excel_path = Path(__file__).with_name(EXCEL_FILENAME)
-    if not excel_path.exists():
-        st.error(f"엑셀 파일을 찾지 못했습니다: {EXCEL_FILENAME}")
+    # 1. 엑셀 로드
+    header_row, options = load_excel_options()
+    if not header_row:
+        st.error(f"'{EXCEL_FILENAME}' 파일을 찾을 수 없거나 헤더를 읽을 수 없습니다.")
         st.stop()
 
-    try:
-        header_row, options = load_price_options(str(excel_path))
-    except Exception as e:
-        st.error(str(e))
-        st.stop()
-
+    # 2. 사이드바: 입력 및 선택
     with st.sidebar:
-        st.header("제안 정보")
-        st.text_input("회사명", key="company")
-        st.text_input("담당자명", key="mgr_name")
-        st.text_input("담당자 연락처", key="mgr_phone")
-        st.text_input("담당자 이메일", key="mgr_email")
-
+        st.header("1. 기본 정보 입력")
+        company = st.text_input("기업명 (고객사)", placeholder="예: 삼성전자")
+        mgr_name = st.text_input("담당자명", value="담당자")
+        mgr_phone = st.text_input("연락처", placeholder="010-0000-0000")
+        mgr_email = st.text_input("이메일")
+        
         st.divider()
-        st.header("금액 선택")
-
-    if "prices" not in st.session_state or not isinstance(st.session_state["prices"], dict):
-        st.session_state["prices"] = {}
-
-    def ensure_price_state(price_txt: str, defaults: dict):
-        if price_txt not in st.session_state["prices"]:
-            base_a = defaults.get("a", 0)
-            base_b = defaults.get("b", 0)
-            base_c = defaults.get("c", 0)
-
-            plans_default = [
-                {
-                    "name": price_txt,
-                    "a_rule": f"선택 {base_a}" if base_a > 0 else "-",
-                    "b_rule": f"선택 {base_b}" if base_b > 0 else "-",
-                    "c_rule": f"선택 {base_c}" if base_c > 0 else "-",
-                },
-                {
-                    "name": f"{price_txt} (B형)",
-                    "a_rule": f"선택 {base_a - 2}" if base_a - 2 > 0 else "-",
-                    "b_rule": f"선택 {base_b + 1}" if base_b + 1 > 0 else "-",
-                    "c_rule": "-",
-                },
-                {
-                    "name": f"{price_txt} (C형)",
-                    "a_rule": f"선택 {base_a - 4}" if base_a - 4 > 0 else "-",
-                    "b_rule": "-",
-                    "c_rule": f"선택 {base_c + 1}" if base_c + 1 > 0 else "-",
-                },
-            ]
-
-            st.session_state["prices"][price_txt] = {
-                "selected": False,
-                "plan_count": 1,
-                "plans": plans_default,
-            }
-
-    with st.sidebar:
+        st.header("2. 금액대 선택")
+        selected_prices = []
         for opt in options:
-            price_txt = opt["price_txt"]
-            ensure_price_state(price_txt, opt["defaults"])
+            if st.checkbox(f"{opt['price_txt']}", key=f"chk_{opt['price_txt']}"):
+                selected_prices.append(opt)
 
-            key_sel = f"sel::{price_txt}"
-            if key_sel not in st.session_state:
-                st.session_state[key_sel] = bool(st.session_state["prices"][price_txt].get("selected", False))
-
-            selected = st.checkbox(price_txt, key=key_sel)
-            st.session_state["prices"][price_txt]["selected"] = bool(selected)
-
-    st.subheader("플랜 구성 (유동적 그룹 선택 시스템)")
-    selected_options = [opt for opt in options if st.session_state["prices"].get(opt["price_txt"], {}).get("selected")]
-    if not selected_options:
-        st.info("왼쪽에서 금액을 선택하세요.")
-        save_state(localS)
+    # 3. 메인 영역: 플랜 상세 설정
+    if not selected_prices:
+        st.info("👈 왼쪽 사이드바에서 제안할 금액대를 선택해주세요.")
         return
 
-    plans: list[dict] = []
-    for opt in selected_options:
-        price_txt = opt["price_txt"]
-        col_idx = opt["col_idx"]
-        price_state = st.session_state["prices"][price_txt]
+    st.subheader("3. 세부 플랜 설정")
+    
+    final_plans = []
+    
+    # 선택된 금액대별 설정 카드
+    for opt in selected_prices:
+        price_txt = opt['price_txt']
+        defaults = opt['defaults']
+        base_a, base_b, base_c = defaults['a'], defaults['b'], defaults['c']
 
-        with st.expander(price_txt, expanded=True):
-            plan_count = st.number_input(
-                "이 금액의 플랜 개수",
-                min_value=1,
-                max_value=3,
-                value=int(price_state.get("plan_count", 1)),
-                step=1,
-                key=f"cnt::{price_txt}",
-            )
-            price_state["plan_count"] = int(plan_count)
-
-            if not isinstance(price_state.get("plans"), list) or len(price_state["plans"]) < 3:
-                ensure_price_state(price_txt, opt["defaults"])
-                price_state = st.session_state["prices"][price_txt]
-
-            for i in range(int(plan_count)):
-                p = price_state["plans"][i]
-                st.markdown(f"**플랜 {i+1}**")
+        with st.expander(f"{price_txt} 플랜 설정", expanded=True):
+            cols = st.columns([1, 4])
+            with cols[0]:
+                cnt = st.number_input(f"{price_txt} 개수", min_value=1, max_value=3, value=1, key=f"cnt_{price_txt}")
+            
+            # N개의 플랜 입력 폼 생성
+            for i in range(int(cnt)):
+                st.markdown(f"**Option {i+1}**")
                 c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+                
+                # 기본값 계산 로직 (Tkinter와 동일)
+                def_name = f"{price_txt}"
+                def_a, def_b, def_c = base_a, base_b, base_c
+                
+                if i == 1: 
+                    def_name += " (B형)"
+                    def_a = max(0, base_a - 2)
+                    def_b = base_b + 1
+                elif i == 2:
+                    def_name += " (C형)"
+                    def_a = max(0, base_a - 4)
+                    def_c = base_c + 1
+                
+                str_a = f"선택 {def_a}" if def_a > 0 else "-"
+                str_b = f"선택 {def_b}" if def_b > 0 else "-"
+                str_c = f"선택 {def_c}" if def_c > 0 else "-"
 
-                with c1:
-                    p["name"] = st.text_input("플랜명", value=p.get("name", ""), key=f"name::{price_txt}::{i}")
-                with c2:
-                    p["a_rule"] = st.text_input("A 규칙", value=p.get("a_rule", "-"), key=f"a::{price_txt}::{i}")
-                with c3:
-                    p["b_rule"] = st.text_input("B 규칙", value=p.get("b_rule", "-"), key=f"b::{price_txt}::{i}")
-                with c4:
-                    p["c_rule"] = st.text_input("C 규칙", value=p.get("c_rule", "-"), key=f"c::{price_txt}::{i}")
+                with c1: 
+                    p_name = st.text_input("플랜명", value=def_name, key=f"name_{price_txt}_{i}")
+                with c2: 
+                    p_a = st.text_input("A선택", value=str_a, key=f"a_{price_txt}_{i}")
+                with c3: 
+                    p_b = st.text_input("B선택", value=str_b, key=f"b_{price_txt}_{i}")
+                with c4: 
+                    p_c = st.text_input("C선택", value=str_c, key=f"c_{price_txt}_{i}")
+                
+                final_plans.append({
+                    "name": p_name,
+                    "col_idx": opt['col_idx'],
+                    "a_rule": p_a, "b_rule": p_b, "c_rule": p_c
+                })
 
-                if p["name"].strip():
-                    plans.append(
-                        {
-                            "name": p["name"].strip(),
-                            "price_txt": price_txt,
-                            "col_idx": col_idx,
-                            "a_rule": p.get("a_rule", "-").strip(),
-                            "b_rule": p.get("b_rule", "-").strip(),
-                            "c_rule": p.get("c_rule", "-").strip(),
-                        }
+    st.divider()
+
+    # 4. 생성 및 다운로드
+    if st.button("제안서 생성하기 (HTML 미리보기 & 엑셀 생성)", type="primary"):
+        with st.spinner("데이터 처리 중..."):
+            # 데이터 파싱
+            info = {"company": company, "name": mgr_name, "phone": mgr_phone, "email": mgr_email}
+            data, summary = parse_data_from_excel(EXCEL_FILENAME, header_row, final_plans)
+            
+            # HTML 생성
+            html_str = render_html_string(final_plans, data, summary, info)
+            
+            # 엑셀 생성
+            excel_bytes = generate_excel_bytes(final_plans, data, summary, info)
+            
+            # 탭으로 보기 분리
+            tab1, tab2 = st.tabs(["📄 HTML 미리보기", "💾 다운로드"])
+            
+            with tab1:
+                st.components.v1.html(html_str, height=1000, scrolling=True)
+            
+            with tab2:
+                st.success("생성이 완료되었습니다!")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    filename_xls = f"2026_{company}_건강검진_제안서.xlsx"
+                    st.download_button(
+                        label="📥 엑셀 파일 다운로드 (.xlsx)",
+                        data=excel_bytes,
+                        file_name=filename_xls,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
-
-    if not plans:
-        st.warning("플랜명이 비어 있어 생성할 플랜이 없습니다. 플랜명을 입력하세요.")
-        save_state(localS)
-        return
-
-    data, summary_info = parse_data(str(excel_path), header_row, plans)
-    summary_table = create_summary_table(plans)
-
-    st.divider()
-    st.subheader("미리보기")
-    html = render_html(
-        plans=plans,
-        data=data,
-        summary=summary_info,
-        company=st.session_state.get("company", ""),
-        mgr_name=st.session_state.get("mgr_name", ""),
-        mgr_phone=st.session_state.get("mgr_phone", ""),
-        mgr_email=st.session_state.get("mgr_email", ""),
-    )
-    st.components.v1.html(html, height=900, scrolling=True)
-
-    st.divider()
-    st.subheader("다운로드")
-
-    xlsx_bytes = generate_excel_bytes(
-        plans=plans,
-        data=data,
-        summary=summary_table,
-        company=st.session_state.get("company", ""),
-        mgr_name=st.session_state.get("mgr_name", ""),
-        mgr_phone=st.session_state.get("mgr_phone", ""),
-        mgr_email=st.session_state.get("mgr_email", ""),
-    )
-
-    st.download_button(
-        "엑셀(.xlsx) 다운로드",
-        data=xlsx_bytes,
-        file_name=f"2026_{st.session_state.get('company','기업')}_제안서.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-
-    save_state(localS)
-
+                with col2:
+                    filename_html = f"2026_{company}_건강검진_제안서.html"
+                    st.download_button(
+                        label="📥 HTML 파일 다운로드 (.html)",
+                        data=html_str,
+                        file_name=filename_html,
+                        mime="text/html"
+                    )
 
 if __name__ == "__main__":
     main()
