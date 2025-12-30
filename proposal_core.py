@@ -334,7 +334,7 @@ def render_html_string(plans, data, summary, info):
                     <div style="flex: 0.8; border-left:3px solid #ddd; padding-left:20px; color:#2c3e50;">
                         <span style="font-weight:bold; display:block; margin-bottom:8px; font-size:13px; color:#c0392b;">[비고: MRI 정밀 장비 안내]</span>
                         <span style="font-weight:bold; font-size:14px; color:#000;">Full Protocol Scan 시행</span><br>
-                        <span style="color:#666; font-size:11px;">(Spot protocol 아님)</span><br>
+                        <span style="color:#666; font-size:11px;">(진단적 의미 없는 검사를 하지 않습니다.)</span><br>
                         <span class="highlight-text" style="font-size:14px;">최신 3.0T MRI 장비 보유</span>
                     </div>
                 </div>
@@ -652,3 +652,4 @@ def generate_excel_bytes(plans, data, summary, info):
     wb.save(output)
     output.seek(0)
     return output.getvalue()
+
