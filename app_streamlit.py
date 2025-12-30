@@ -1,11 +1,58 @@
 # app_streamlit.py
 import streamlit as st
 from pathlib import Path
+# (주의) proposal_core 모듈이 같은 폴더에 있어야 합니다.
 from proposal_core import load_price_options, parse_data_from_excel, render_html_string, generate_excel_bytes
 
 EXCEL_FILENAME = "2025 건강검진 견적서_표준.xlsx"
 
+# 1. 페이지 설정 (가장 먼저 실행되어야 함)
 st.set_page_config(page_title="2026 기업건강검진 견적서 생성기", layout="wide")
+
+# ==========================================
+# [추가됨] 비밀번호 확인 함수
+# ==========================================
+def check_password():
+    """비밀번호가 맞으면 True, 아니면 False를 반환하고 입력창을 띄움"""
+    
+    def password_entered():
+        """입력된 비밀번호가 시크릿과 일치하는지 확인"""
+        if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
+            st.session_state["password_correct"] = True
+            # 보안을 위해 세션에 저장된 비밀번호 텍스트 삭제
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    # 1. 세션에 인증 정보가 없으면 초기화
+    if "password_correct" not in st.session_state:
+        # 처음 접속 시 입력창 표시
+        st.text_input(
+            "비밀번호를 입력하세요", 
+            type="password", 
+            on_change=password_entered, 
+            key="password"
+        )
+        return False
+    
+    # 2. 비밀번호가 틀렸을 경우
+    elif not st.session_state["password_correct"]:
+        st.text_input(
+            "비밀번호를 입력하세요", 
+            type="password", 
+            on_change=password_entered, 
+            key="password"
+        )
+        st.error("😕 비밀번호가 틀렸습니다. 다시 입력해주세요.")
+        return False
+    
+    # 3. 비밀번호가 맞을 경우
+    else:
+        return True
+
+# ==========================================
+# 기존 로직
+# ==========================================
 
 @st.cache_data
 def load_excel_options():
@@ -15,6 +62,7 @@ def load_excel_options():
     return load_price_options(str(excel_path))
 
 def main():
+    # 로그인 성공 시에만 이 함수가 실행됨
     st.title("🏥 2026 기업 건강검진 제안서 생성기")
 
     # 1. 엑셀 로드
@@ -34,9 +82,11 @@ def main():
         st.divider()
         st.header("2. 금액대 선택")
         selected_prices = []
-        for opt in options:
-            if st.checkbox(f"{opt['price_txt']}", key=f"chk_{opt['price_txt']}"):
-                selected_prices.append(opt)
+        # options가 None일 경우 방지
+        if options:
+            for opt in options:
+                if st.checkbox(f"{opt['price_txt']}", key=f"chk_{opt['price_txt']}"):
+                    selected_prices.append(opt)
 
     # 3. 메인 영역: 플랜 상세 설정
     if not selected_prices:
@@ -63,7 +113,7 @@ def main():
                 st.markdown(f"**Option {i+1}**")
                 c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
                 
-                # 기본값 계산 로직 (Tkinter와 동일)
+                # 기본값 계산 로직
                 def_name = f"{price_txt}"
                 def_a, def_b, def_c = base_a, base_b, base_c
                 
@@ -138,5 +188,6 @@ def main():
                     )
 
 if __name__ == "__main__":
-    main()
-
+    # 비밀번호 확인이 통과되었을 때만 main() 실행
+    if check_password():
+        main()
