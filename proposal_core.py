@@ -14,8 +14,12 @@ def scan_default_counts(ws, col_idx, start_row):
     current_cat = ""
 
     for r in range(start_row + 1, max_scan + 1):
-        cell_group = str(ws.cell(row=r, column=1).value).strip() if ws.cell(row=r, column=1).value else ""
-        cell_val = str(ws.cell(row=r, column=col_idx).value).strip() if ws.cell(row=r, column=col_idx).value else ""
+        # [수정] 셀 값을 가져올 때 None 체크 강화
+        c1_val = ws.cell(row=r, column=1).value
+        c_target_val = ws.cell(row=r, column=col_idx).value
+        
+        cell_group = str(c1_val).strip() if c1_val else ""
+        cell_val = str(c_target_val).strip() if c_target_val else ""
 
         if "A그룹" in cell_group: current_cat = "a"
         elif "B그룹" in cell_group: current_cat = "b"
@@ -65,11 +69,9 @@ def load_price_options(excel_path):
         if "만원" in val and not any(e in val for e in excluded):
             col_idx = idx + 1
             
-            # 숫자 추출
             try: price_num = int(re.sub(r'[^0-9]', '', val))
             except: price_num = 0
 
-            # 스캔 vs 매뉴얼
             if price_num in manual_defaults:
                 defaults = manual_defaults[price_num]
             else:
@@ -87,19 +89,21 @@ def load_price_options(excel_path):
     return header_row_idx, price_cols
 
 def parse_data_from_excel(excel_path, header_row, plans):
-    """엑셀 데이터 파싱 및 요약 정보 생성"""
+    """엑셀 데이터 파싱 - 그룹 인식 로직 강화"""
     wb = openpyxl.load_workbook(excel_path, data_only=True)
     sheet = wb.active
     
+    # [수정] 키 누락 방지를 위해 미리 초기화
     parsed_data = {"A": [], "B": [], "C": [], "EQUIP": [], "COMMON_BLOOD": []}
     summary_info = []
 
+    # 요약 정보 생성
     for p in plans:
         summary_info.append({
             "name": p["name"],
-            "a": p["a_rule"],
-            "b": p["b_rule"],
-            "c": p["c_rule"]
+            "a": p.get("a_rule", "-"),
+            "b": p.get("b_rule", "-"),
+            "c": p.get("c_rule", "-")
         })
 
     fill_cache = {i: {"A": None, "B": None, "C": None} for i in range(len(plans))}
@@ -109,12 +113,15 @@ def parse_data_from_excel(excel_path, header_row, plans):
         if not row or len(row) < 2: continue
         col0 = str(row[0]).strip() if row[0] else ""
         col1 = str(row[1]).strip() if row[1] else ""
+        
+        # [수정] 공백 제거 후 비교 (매칭율 향상)
+        col0_clean = col0.replace(" ", "")
 
-        if "A그룹" in col0: current_main_cat = "A"
-        elif "B그룹" in col0: current_main_cat = "B"
-        elif "C그룹" in col0: current_main_cat = "C"
-        elif "장비검사" in col0 or "소화기검사" in col0: current_main_cat = "EQUIP"
-        elif "혈액" in col0 and "소변" in col0: current_main_cat = "COMMON"
+        if "A그룹" in col0_clean: current_main_cat = "A"
+        elif "B그룹" in col0_clean: current_main_cat = "B"
+        elif "C그룹" in col0_clean: current_main_cat = "C"
+        elif "장비검사" in col0_clean or "소화기검사" in col0_clean: current_main_cat = "EQUIP"
+        elif "혈액" in col0_clean and "소변" in col0_clean: current_main_cat = "COMMON"
 
         if not col1 or col1 in ["검진항목", "내용"]: continue
 
@@ -136,12 +143,12 @@ def parse_data_from_excel(excel_path, header_row, plans):
                 elif val == "" and cache[current_main_cat]: val = cache[current_main_cat]
                 elif val != "": cache[current_main_cat] = None
                 
-                # User Override
+                # User Override (규칙 적용)
                 if "선택" in val:
                     rule = ""
-                    if current_main_cat == "A": rule = plan['a_rule']
-                    elif current_main_cat == "B": rule = plan['b_rule']
-                    elif current_main_cat == "C": rule = plan['c_rule']
+                    if current_main_cat == "A": rule = plan.get('a_rule', '')
+                    elif current_main_cat == "B": rule = plan.get('b_rule', '')
+                    elif current_main_cat == "C": rule = plan.get('c_rule', '')
                     
                     if rule:
                         val = "" if rule == "-" else rule
@@ -161,7 +168,7 @@ def parse_data_from_excel(excel_path, header_row, plans):
     return parsed_data, summary_info
 
 def render_html_string(plans, data, summary, info):
-    """Tkinter 버전과 동일한 HTML 생성"""
+    """HTML 생성 - f-string 중첩 오류 방지를 위해 분리형 구조 사용"""
     today_date = datetime.now().strftime("%Y년 %m월 %d일")
     company = info.get('company', '')
     proposal_title = f"2026 {company} 임직원 건강검진 제안서" if company else "2026 기업 임직원 건강검진 제안서"
@@ -175,8 +182,9 @@ def render_html_string(plans, data, summary, info):
         if "선택" in val: return normalize_text(val)
         return val
 
-    def render_table(title, item_list, show_sub=False, footer=None, merge=True):
-        if not item_list: return ""
+    def render_table_html(title, item_list, show_sub=False, footer=None, merge=True):
+        if not item_list: return "" # 데이터 없으면 빈 문자열 반환
+        
         grid = []
         for item in item_list:
             row = [get_val_display(v) for v in item['values']]
@@ -204,7 +212,14 @@ def render_html_string(plans, data, summary, info):
         for r in range(rows_cnt):
             item = item_list[r]
             sub_tag = f"<span class='cat-tag'>[{item['category']}]</span> " if show_sub and item['category'] else ""
-            row_str = f"<tr><td class='item-name-cell'>{sub_tag}{item['name']}</td>"
+            
+            # C그룹 줄바꿈 방지 스타일 적용
+            name_style = ""
+            if "스마트암검사" in item['name']:
+                name_style = " style='white-space:nowrap; letter-spacing:-1.5px;'"
+            
+            row_str = f"<tr><td class='item-name-cell'><div{name_style}>{sub_tag}{item['name']}</div></td>"
+            
             for c in range(cols_cnt):
                 if skip_map[r][c]: continue
                 val = grid[r][c]
@@ -219,11 +234,22 @@ def render_html_string(plans, data, summary, info):
 
         header_cols = "".join([f"<th>{p['name']}</th>" for p in plans])
         footer_div = f"<div class='table-footer'>{footer}</div>" if footer else ""
-        return f"""<div class="section"><div class="sec-title">{title}</div><table><thead><tr><th style="width:28%">검사 항목</th>{header_cols}</tr></thead><tbody>{html_rows}</tbody></table>{footer_div}</div>"""
+        
+        return f"""
+        <div class="section">
+            <div class="sec-title">{title}</div>
+            <table>
+                <thead><tr><th style="width:28%">검사 항목</th>{header_cols}</tr></thead>
+                <tbody>{html_rows}</tbody>
+            </table>
+            {footer_div}
+        </div>
+        """
 
-    a_vals = [s['a'] for s in summary]
-    b_vals = [s['b'] for s in summary]
-    c_vals = [s['c'] for s in summary]
+    # Summary Rows
+    a_vals = [s.get('a', '-') for s in summary]
+    b_vals = [s.get('b', '-') for s in summary]
+    c_vals = [s.get('c', '-') for s in summary]
     
     def make_sum_row(title, vals):
         tds = "".join([f"<td class='text-center'>{v}</td>" for v in vals])
@@ -232,54 +258,60 @@ def render_html_string(plans, data, summary, info):
     sum_rows_html = make_sum_row("A그룹", a_vals) + make_sum_row("B그룹", b_vals) + make_sum_row("C그룹", c_vals)
     sum_headers = "".join([f"<th>{p['name']}</th>" for p in plans])
 
-    # HTML Template (CSS from Tkinter version)
-    return f"""
+    # CSS
+    css = """
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    body { font-family: 'Pretendard', sans-serif; background: #fff; margin: 0; padding: 20px; color: #333; font-size: 11px; }
+    .page { width: 210mm; margin: 0 auto; background: white; padding: 15px 40px; box-sizing: border-box; }
+    .hospital-brand { font-size: 26px; font-weight: 900; color: #1a253a; letter-spacing: -1px; }
+    .hospital-sub { font-size: 16px; color: #555; margin-top: 5px; font-weight: bold; }
+    .contact-card { background-color: #f8f9fa; border: 2px solid #2c3e50; border-radius: 8px; padding: 10px 15px; text-align: right; box-shadow: 2px 2px 8px rgba(0,0,0,0.05); min-width: 200px; float: right; }
+    header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
+    .header-divider { border-bottom: 2px solid #2c3e50; margin-bottom: 15px; clear: both; }
+    .section { margin-bottom: 25px; page-break-inside: avoid; }
+    .sec-title { font-size: 15px; font-weight: 800; color: #2c3e50; margin-bottom: 8px; padding-left: 8px; border-left: 4px solid #2c3e50; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; border-top: 2px solid #2c3e50; }
+    th { background: #f0f2f5; color: #2c3e50; padding: 8px; border: 1px solid #bdc3c7; font-weight: bold; }
+    td { padding: 6px; border: 1px solid #bdc3c7; vertical-align: middle; word-break: keep-all; height: 24px; }
+    .summary-table th { background: #34495e; color: white; border-color: #2c3e50; }
+    .summary-header { background: #f8f9fa; font-weight: bold; color: #2c3e50; padding-left: 15px; text-align: left; }
+    .text-center { text-align: center; }
+    .text-bold { font-weight: bold; }
+    .text-navy { color: #2c3e50; }
+    .item-name-cell { text-align:left; padding-left:10px; width: 28%; font-weight: 600; }
+    .cat-tag { color: #7f8c8d; font-size: 10px; margin-right:3px; }
+    .table-footer { font-size: 11px; color: #2c3e50; text-align: right; margin-top: 5px; font-weight: bold; }
+    .guide-box { background-color: #fff; border: 2px solid #2c3e50; padding: 15px; margin-bottom: 15px; font-size: 11px; line-height: 1.6; color: #333; }
+    .guide-title { font-weight: 800; font-size: 14px; margin-bottom: 10px; display:block; color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+    .highlight-text { font-weight: bold; color: #1a253a; }
+    .important-note { color: #c0392b; font-weight: bold; }
+    .program-grid { display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; border: 1px solid #ccc; padding: 6px; background: #fff; }
+    .grid-row { display: flex; gap: 6px; }
+    .grid-col { display: flex; flex-direction: column; gap: 6px; }
+    .grid-box { border: 1px solid #95a5a6; background: white; }
+    .grid-header { background: #34495e; color: white; padding: 6px 10px; font-weight: bold; font-size: 12px; text-align: center; }
+    .grid-content { padding: 10px; font-size: 11px; line-height: 1.5; color: #333; }
+    .grid-content-list { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; padding: 8px 10px; font-size: 11px; font-weight: 500; color: #444; }
+    .grid-sub-header { background: #ecf0f1; color: #2c3e50; padding: 4px 10px; font-weight: bold; font-size: 11px; border-bottom: 1px solid #ddd; }
+    .header-common { background: #2c3e50; font-size: 13px; text-align: left; padding-left: 15px; }
+    .header-a { background: #566573; }
+    .header-b { background: #7f8c8d; }
+    .header-c { background: #2c3e50; }
+    """
+
+    # Build Body Parts
+    head = f"""
     <!DOCTYPE html>
     <html lang="ko">
     <head>
         <meta charset="UTF-8">
-        <style>
-            @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
-            body {{ font-family: 'Pretendard', sans-serif; background: #fff; margin: 0; padding: 20px; color: #333; font-size: 11px; }}
-            .page {{ width: 210mm; margin: 0 auto; background: white; padding: 15px 40px; box-sizing: border-box; }}
-            .hospital-brand {{ font-size: 26px; font-weight: 900; color: #1a253a; letter-spacing: -1px; }}
-            .hospital-sub {{ font-size: 16px; color: #555; margin-top: 5px; font-weight: bold; }}
-            .contact-card {{ background-color: #f8f9fa; border: 2px solid #2c3e50; border-radius: 8px; padding: 10px 15px; text-align: right; box-shadow: 2px 2px 8px rgba(0,0,0,0.05); min-width: 200px; float: right; }}
-            header {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }}
-            .header-divider {{ border-bottom: 2px solid #2c3e50; margin-bottom: 15px; clear: both; }}
-            .section {{ margin-bottom: 25px; page-break-inside: avoid; }}
-            .sec-title {{ font-size: 15px; font-weight: 800; color: #2c3e50; margin-bottom: 8px; padding-left: 8px; border-left: 4px solid #2c3e50; }}
-            table {{ width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; border-top: 2px solid #2c3e50; }}
-            th {{ background: #f0f2f5; color: #2c3e50; padding: 8px; border: 1px solid #bdc3c7; font-weight: bold; }}
-            td {{ padding: 6px; border: 1px solid #bdc3c7; vertical-align: middle; word-break: keep-all; height: 24px; }}
-            .summary-table th {{ background: #34495e; color: white; border-color: #2c3e50; }}
-            .summary-header {{ background: #f8f9fa; font-weight: bold; color: #2c3e50; padding-left: 15px; text-align: left; }}
-            .text-center {{ text-align: center; }}
-            .text-bold {{ font-weight: bold; }}
-            .text-navy {{ color: #2c3e50; }}
-            .item-name-cell {{ text-align:left; padding-left:10px; width: 28%; font-weight: 600; }}
-            .cat-tag {{ color: #7f8c8d; font-size: 10px; margin-right:3px; }}
-            .table-footer {{ font-size: 11px; color: #2c3e50; text-align: right; margin-top: 5px; font-weight: bold; }}
-            .guide-box {{ background-color: #fff; border: 2px solid #2c3e50; padding: 15px; margin-bottom: 15px; font-size: 11px; line-height: 1.6; color: #333; }}
-            .guide-title {{ font-weight: 800; font-size: 14px; margin-bottom: 10px; display:block; color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 5px; }}
-            .highlight-text {{ font-weight: bold; color: #1a253a; }}
-            .important-note {{ color: #c0392b; font-weight: bold; }}
-            .program-grid {{ display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; border: 1px solid #ccc; padding: 6px; background: #fff; }}
-            .grid-row {{ display: flex; gap: 6px; }}
-            .grid-col {{ display: flex; flex-direction: column; gap: 6px; }}
-            .grid-box {{ border: 1px solid #95a5a6; background: white; }}
-            .grid-header {{ background: #34495e; color: white; padding: 6px 10px; font-weight: bold; font-size: 12px; text-align: center; }}
-            .grid-content {{ padding: 10px; font-size: 11px; line-height: 1.5; color: #333; }}
-            .grid-content-list {{ display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; padding: 8px 10px; font-size: 11px; font-weight: 500; color: #444; }}
-            .grid-sub-header {{ background: #ecf0f1; color: #2c3e50; padding: 4px 10px; font-weight: bold; font-size: 11px; border-bottom: 1px solid #ddd; }}
-            .header-common {{ background: #2c3e50; font-size: 13px; text-align: left; padding-left: 15px; }}
-            .header-a {{ background: #566573; }}
-            .header-b {{ background: #7f8c8d; }}
-            .header-c {{ background: #2c3e50; }}
-        </style>
+        <style>{css}</style>
     </head>
     <body>
         <div class="page">
+    """
+
+    header_content = f"""
             <header>
                 <div>
                     <div class="hospital-brand">뉴고려병원</div>
@@ -294,7 +326,9 @@ def render_html_string(plans, data, summary, info):
                 </div>
             </header>
             <div class="header-divider"></div>
+    """
 
+    guide_content = """
             <div class="guide-box">
                 <span class="guide-title">1. 유동적 그룹 선택 시스템 (Flexible Option)</span>
                 <div style="display:flex; justify-content:space-between; align-items: flex-start; gap: 20px;">
@@ -372,7 +406,9 @@ def render_html_string(plans, data, summary, info):
                     </div>
                 </div>
             </div>
+    """
 
+    summary_content = f"""
             <div class="section">
                 <div class="sec-title">3. 검진 프로그램 요약</div>
                 <table class="summary-table">
@@ -380,12 +416,18 @@ def render_html_string(plans, data, summary, info):
                     <tbody>{sum_rows_html}</tbody>
                 </table>
             </div>
+    """
 
-            {render_table("4. A 그룹 (정밀검사)", data['A'])}
-            {render_table("5. B 그룹 (특화검사)", data['B'], footer="* A그룹 2개를 제외하고 B그룹 1개 선택 가능")}
-            {render_table("6. C 그룹 (VIP검사)", data['C'], footer="* A그룹 4개를 제외하고 C그룹 1개 선택 가능")}
-            {render_table("7. 기초 장비 및 혈액 검사", data['EQUIP'] + data['COMMON_BLOOD'], show_sub=True, merge=False)}
+    # Detail Tables
+    table_a = render_table_html("4. A 그룹 (정밀검사)", data.get('A', []))
+    table_b = render_table_html("5. B 그룹 (특화검사)", data.get('B', []), footer="* A그룹 2개를 제외하고 B그룹 1개 선택 가능")
+    table_c = render_table_html("6. C 그룹 (VIP검사)", data.get('C', []), footer="* A그룹 4개를 제외하고 C그룹 1개 선택 가능")
+    
+    # 7. Equip
+    equip_data = (data.get('EQUIP', []) or []) + (data.get('COMMON_BLOOD', []) or [])
+    table_equip = render_table_html("7. 기초 장비 및 혈액 검사", equip_data, show_sub=True, merge=False)
 
+    footer = """
             <div style="text-align:center; font-size:11px; color:#7f8c8d; margin-top:30px; padding-top:20px; border-top:1px solid #eee;">
                 본 제안서는 귀사의 임직원 건강 증진을 위해 작성되었으며, 세부 검진 항목 및 일정은 협의에 따라 조정될 수 있습니다.
             </div>
@@ -393,6 +435,8 @@ def render_html_string(plans, data, summary, info):
     </body>
     </html>
     """
+    
+    return head + header_content + guide_content + summary_content + table_a + table_b + table_c + table_equip + footer
 
 def generate_excel_bytes(plans, data, summary, info):
     """Tkinter 버전과 동일한 엑셀 생성 (행높이 40/25/21 등 스타일 완벽 이식)"""
@@ -420,11 +464,19 @@ def generate_excel_bytes(plans, data, summary, info):
 
     def draw_box_border(ws, min_r, max_r, min_c, max_c):
         for c in range(min_c, max_c + 1):
-            ws.cell(row=min_r, column=c).border = Border(left=ws.cell(row=min_r, column=c).border.left, right=ws.cell(row=min_r, column=c).border.right, top=box_side, bottom=ws.cell(row=min_r, column=c).border.bottom)
-            ws.cell(row=max_r, column=c).border = Border(left=ws.cell(row=max_r, column=c).border.left, right=ws.cell(row=max_r, column=c).border.right, top=ws.cell(row=max_r, column=c).border.top, bottom=box_side)
+            cell = ws.cell(row=min_r, column=c)
+            old = cell.border
+            cell.border = Border(left=old.left, right=old.right, top=box_side, bottom=old.bottom)
+            cell = ws.cell(row=max_r, column=c)
+            old = cell.border
+            cell.border = Border(left=old.left, right=old.right, top=old.top, bottom=box_side)
         for r in range(min_r, max_r + 1):
-            ws.cell(row=r, column=min_c).border = Border(left=box_side, right=ws.cell(row=r, column=min_c).border.right, top=ws.cell(row=r, column=min_c).border.top, bottom=ws.cell(row=r, column=min_c).border.bottom)
-            ws.cell(row=r, column=max_c).border = Border(left=ws.cell(row=r, column=max_c).border.left, right=box_side, top=ws.cell(row=r, column=max_c).border.top, bottom=ws.cell(row=r, column=max_c).border.bottom)
+            cell = ws.cell(row=r, column=min_c)
+            old = cell.border
+            cell.border = Border(left=box_side, right=old.right, top=old.top, bottom=old.bottom)
+            cell = ws.cell(row=r, column=max_c)
+            old = cell.border
+            cell.border = Border(left=old.left, right=box_side, top=old.top, bottom=old.bottom)
 
     # 1. Header
     ws['A1'] = "뉴고려병원"
