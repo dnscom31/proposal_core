@@ -14,7 +14,6 @@ def scan_default_counts(ws, col_idx, start_row):
     current_cat = ""
 
     for r in range(start_row + 1, max_scan + 1):
-        # [수정] 셀 값을 가져올 때 None 체크 강화
         c1_val = ws.cell(row=r, column=1).value
         c_target_val = ws.cell(row=r, column=col_idx).value
         
@@ -41,7 +40,6 @@ def load_price_options(excel_path):
     header_row_idx = None
     price_cols = []
 
-    # 헤더 행 찾기
     for row in sheet.iter_rows(min_row=1, max_row=20):
         for cell in row:
             if cell.value and "만원" in str(cell.value):
@@ -89,15 +87,13 @@ def load_price_options(excel_path):
     return header_row_idx, price_cols
 
 def parse_data_from_excel(excel_path, header_row, plans):
-    """엑셀 데이터 파싱 - 그룹 인식 로직 강화"""
+    """엑셀 데이터 파싱"""
     wb = openpyxl.load_workbook(excel_path, data_only=True)
     sheet = wb.active
     
-    # [수정] 키 누락 방지를 위해 미리 초기화
     parsed_data = {"A": [], "B": [], "C": [], "EQUIP": [], "COMMON_BLOOD": []}
     summary_info = []
 
-    # 요약 정보 생성
     for p in plans:
         summary_info.append({
             "name": p["name"],
@@ -114,7 +110,6 @@ def parse_data_from_excel(excel_path, header_row, plans):
         col0 = str(row[0]).strip() if row[0] else ""
         col1 = str(row[1]).strip() if row[1] else ""
         
-        # [수정] 공백 제거 후 비교 (매칭율 향상)
         col0_clean = col0.replace(" ", "")
 
         if "A그룹" in col0_clean: current_main_cat = "A"
@@ -136,14 +131,12 @@ def parse_data_from_excel(excel_path, header_row, plans):
             if col_idx < len(row):
                 val = str(row[col_idx]).strip() if row[col_idx] else ""
 
-            # 캐싱 및 사용자 룰 적용
             if current_main_cat in ["A", "B", "C"]:
                 cache = fill_cache[idx]
                 if "선택" in val: cache[current_main_cat] = val
                 elif val == "" and cache[current_main_cat]: val = cache[current_main_cat]
                 elif val != "": cache[current_main_cat] = None
                 
-                # User Override (규칙 적용)
                 if "선택" in val:
                     rule = ""
                     if current_main_cat == "A": rule = plan.get('a_rule', '')
@@ -168,7 +161,7 @@ def parse_data_from_excel(excel_path, header_row, plans):
     return parsed_data, summary_info
 
 def render_html_string(plans, data, summary, info):
-    """HTML 생성 - f-string 중첩 오류 방지를 위해 분리형 구조 사용"""
+    """HTML 생성"""
     today_date = datetime.now().strftime("%Y년 %m월 %d일")
     company = info.get('company', '')
     proposal_title = f"2026 {company} 임직원 건강검진 제안서" if company else "2026 기업 임직원 건강검진 제안서"
@@ -183,7 +176,7 @@ def render_html_string(plans, data, summary, info):
         return val
 
     def render_table_html(title, item_list, show_sub=False, footer=None, merge=True):
-        if not item_list: return "" # 데이터 없으면 빈 문자열 반환
+        if not item_list: return ""
         
         grid = []
         for item in item_list:
@@ -213,7 +206,6 @@ def render_html_string(plans, data, summary, info):
             item = item_list[r]
             sub_tag = f"<span class='cat-tag'>[{item['category']}]</span> " if show_sub and item['category'] else ""
             
-            # C그룹 줄바꿈 방지 스타일 적용
             name_style = ""
             if "스마트암검사" in item['name']:
                 name_style = " style='white-space:nowrap; letter-spacing:-1.5px;'"
@@ -246,7 +238,6 @@ def render_html_string(plans, data, summary, info):
         </div>
         """
 
-    # Summary Rows
     a_vals = [s.get('a', '-') for s in summary]
     b_vals = [s.get('b', '-') for s in summary]
     c_vals = [s.get('c', '-') for s in summary]
@@ -258,7 +249,6 @@ def render_html_string(plans, data, summary, info):
     sum_rows_html = make_sum_row("A그룹", a_vals) + make_sum_row("B그룹", b_vals) + make_sum_row("C그룹", c_vals)
     sum_headers = "".join([f"<th>{p['name']}</th>" for p in plans])
 
-    # CSS
     css = """
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
     body { font-family: 'Pretendard', sans-serif; background: #fff; margin: 0; padding: 20px; color: #333; font-size: 11px; }
@@ -299,7 +289,6 @@ def render_html_string(plans, data, summary, info):
     .header-c { background: #2c3e50; }
     """
 
-    # Build Body Parts
     head = f"""
     <!DOCTYPE html>
     <html lang="ko">
@@ -418,12 +407,10 @@ def render_html_string(plans, data, summary, info):
             </div>
     """
 
-    # Detail Tables
     table_a = render_table_html("4. A 그룹 (정밀검사)", data.get('A', []))
     table_b = render_table_html("5. B 그룹 (특화검사)", data.get('B', []), footer="* A그룹 2개를 제외하고 B그룹 1개 선택 가능")
     table_c = render_table_html("6. C 그룹 (VIP검사)", data.get('C', []), footer="* A그룹 4개를 제외하고 C그룹 1개 선택 가능")
     
-    # 7. Equip
     equip_data = (data.get('EQUIP', []) or []) + (data.get('COMMON_BLOOD', []) or [])
     table_equip = render_table_html("7. 기초 장비 및 혈액 검사", equip_data, show_sub=True, merge=False)
 
@@ -439,7 +426,7 @@ def render_html_string(plans, data, summary, info):
     return head + header_content + guide_content + summary_content + table_a + table_b + table_c + table_equip + footer
 
 def generate_excel_bytes(plans, data, summary, info):
-    """Tkinter 버전과 동일한 엑셀 생성 (행높이 40/25/21 등 스타일 완벽 이식)"""
+    """엑셀 생성"""
     company = info.get('company', '기업')
     title_text = f"2026 {company} 임직원 건강검진 제안서"
     
@@ -447,13 +434,11 @@ def generate_excel_bytes(plans, data, summary, info):
     ws = wb.active
     ws.title = "제안서"
     
-    # A4 설정 (9)
     ws.page_setup.paperSize = 9
     ws.print_options.horizontalCentered = True
     ws.page_margins.left = 0.5; ws.page_margins.right = 0.5
     ws.page_margins.top = 0.5; ws.page_margins.bottom = 0.5
 
-    # 스타일
     thin_border = Border(left=Side(style='thin',color="CCCCCC"), right=Side(style='thin',color="CCCCCC"), top=Side(style='thin',color="CCCCCC"), bottom=Side(style='thin',color="CCCCCC"))
     box_side = Side(style='medium', color="2C3E50")
     header_fill = PatternFill(start_color="F0F2F5", end_color="F0F2F5", fill_type="solid")
@@ -464,21 +449,13 @@ def generate_excel_bytes(plans, data, summary, info):
 
     def draw_box_border(ws, min_r, max_r, min_c, max_c):
         for c in range(min_c, max_c + 1):
-            cell = ws.cell(row=min_r, column=c)
-            old = cell.border
-            cell.border = Border(left=old.left, right=old.right, top=box_side, bottom=old.bottom)
-            cell = ws.cell(row=max_r, column=c)
-            old = cell.border
-            cell.border = Border(left=old.left, right=old.right, top=old.top, bottom=box_side)
+            ws.cell(row=min_r, column=c).border = Border(left=ws.cell(row=min_r, column=c).border.left, right=ws.cell(row=min_r, column=c).border.right, top=box_side, bottom=ws.cell(row=min_r, column=c).border.bottom)
+            ws.cell(row=max_r, column=c).border = Border(left=ws.cell(row=max_r, column=c).border.left, right=ws.cell(row=max_r, column=c).border.right, top=ws.cell(row=max_r, column=c).border.top, bottom=box_side)
         for r in range(min_r, max_r + 1):
-            cell = ws.cell(row=r, column=min_c)
-            old = cell.border
-            cell.border = Border(left=box_side, right=old.right, top=old.top, bottom=old.bottom)
-            cell = ws.cell(row=r, column=max_c)
-            old = cell.border
-            cell.border = Border(left=old.left, right=box_side, top=old.top, bottom=old.bottom)
+            ws.cell(row=r, column=min_c).border = Border(left=box_side, right=ws.cell(row=r, column=min_c).border.right, top=ws.cell(row=r, column=min_c).border.top, bottom=ws.cell(row=r, column=min_c).border.bottom)
+            ws.cell(row=r, column=max_c).border = Border(left=ws.cell(row=r, column=max_c).border.left, right=box_side, top=ws.cell(row=r, column=max_c).border.top, bottom=ws.cell(row=r, column=max_c).border.bottom)
 
-    # 1. Header
+    # Header
     ws['A1'] = "뉴고려병원"
     ws['A1'].font = Font(size=16, bold=True, color="1A253A")
     ws['A2'] = title_text
@@ -488,7 +465,6 @@ def generate_excel_bytes(plans, data, summary, info):
     last_col = len(plans) + 1
     if last_col < 3: last_col = 3
 
-    # 담당자
     mgr_start_col = last_col - 1 if last_col > 2 else last_col
     ws.merge_cells(start_row=1, start_column=mgr_start_col, end_row=1, end_column=last_col)
     ws.cell(row=1, column=mgr_start_col, value="담당자").font = Font(bold=True, color="7F8C8D")
@@ -506,7 +482,7 @@ def generate_excel_bytes(plans, data, summary, info):
 
     current_row = 6
 
-    # 1. 유동적 그룹
+    # 유동적 그룹
     ws.cell(row=current_row, column=1, value="1. 유동적 그룹 선택 시스템 (Flexible Option)").font = Font(bold=True, size=12, color="2C3E50")
     current_row += 1
     guide_text = (
@@ -525,11 +501,10 @@ def generate_excel_bytes(plans, data, summary, info):
     cell.alignment = Alignment(wrap_text=True, vertical="center", horizontal="left", indent=1)
     
     draw_box_border(ws, start_r, end_r, 1, last_col)
-    for r in range(start_r, end_r + 1):
-        ws.row_dimensions[r].height = 21 # 유동적 그룹 21
+    for r in range(start_r, end_r + 1): ws.row_dimensions[r].height = 21 
     current_row += 8
 
-    # 2. 상세 검진 항목
+    # 상세 항목
     ws.cell(row=current_row, column=1, value="2. 상세 검진 항목 및 그룹 구성").font = Font(bold=True, size=12, color="2C3E50")
     current_row += 1
     
@@ -538,7 +513,6 @@ def generate_excel_bytes(plans, data, summary, info):
     text_b = "[가] 대장수면내시경  [마] 부정맥검사S-PATCH\n[나] 심장초음파  [바] [혈액]알레르기검사\n[다] (여)유방초음파  [사] [혈액]알츠온:치매위험도\n[라] [분변]대장암_얼리텍  [아] [혈액]간섬유화검사\n[자] 폐렴예방접종:15가"
     text_c = "[A] 뇌MRI+MRA  [D] [혈액]스마트암검사(남6/여7종)\n[B] 경추MRI  [E] [혈액]선천적 유전자검사\n[C] 요추MRI  [F] [혈액]에피클락 (생체나이)"
 
-    # 공통 항목 박스
     box_start_row = current_row
     ws.cell(row=current_row, column=1, value="공통 항목 (위내시경 포함)").font = Font(bold=True, color="FFFFFF")
     ws.cell(row=current_row, column=1).fill = PatternFill(start_color="2C3E50", end_color="2C3E50", fill_type="solid")
@@ -555,7 +529,6 @@ def generate_excel_bytes(plans, data, summary, info):
     draw_box_border(ws, box_start_row, current_row+4, 1, last_col)
     current_row += 5
 
-    # A/B/C 박스 헬퍼
     def write_group_box(title, text, color_hex, row_h):
         nonlocal current_row
         b_start = current_row
@@ -574,12 +547,13 @@ def generate_excel_bytes(plans, data, summary, info):
         draw_box_border(ws, b_start, current_row+3, 1, last_col)
         current_row += 4
 
-    write_group_box("A 그룹\n(정밀)", text_a, "566573", 39) # A=39
-    write_group_box("B 그룹\n(특화)", text_b, "7F8C8D", 15) # B=15
-    write_group_box("C 그룹\n(VIP)", text_c, "2C3E50", 15) # C=15
+    # [수정됨] B그룹 높이 23으로 변경
+    write_group_box("A 그룹\n(정밀)", text_a, "566573", 39)
+    write_group_box("B 그룹\n(특화)", text_b, "7F8C8D", 23)
+    write_group_box("C 그룹\n(VIP)", text_c, "2C3E50", 15)
     current_row += 1
 
-    # 3. Summary
+    # Summary
     ws.cell(row=current_row, column=1, value="3. 검진 프로그램 요약").font = Font(bold=True, size=12)
     current_row += 1
     ws.cell(row=current_row, column=1, value="구분").fill = sum_fill
@@ -608,7 +582,7 @@ def generate_excel_bytes(plans, data, summary, info):
     ws.row_breaks.append(Break(id=current_row))
     current_row += 1
 
-    # 4,5,6,7 상세
+    # 상세
     def write_section(title, items, merge=True):
         nonlocal current_row
         if not items: return
