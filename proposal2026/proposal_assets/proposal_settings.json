@@ -1,0 +1,47 @@
+{
+  "page_enabled": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+  ],
+  "layout": {
+    "page_padding_mm": 20,
+    "page_gap_px": 20,
+    "img_default_height_px": 220,
+    "img_margin_v_px": 10,
+    "highlight_margin_v_px": 15,
+    "table_margin_top_px": 10,
+    "table_cell_padding_px": 7,
+    "user_block_gap_px": 12,
+    "img_h_300_px": 300,
+    "img_h_250_px": 250,
+    "img_h_180_px": 180,
+    "img_h_150_px": 150
+  },
+  "images_original": {
+    "병원 전경": "병원_전경_98d8328684b0edbd_1000x300.jpg",
+    "인증마크 모음": "인증마크_모음_e3cd70fc72805e4f_490x150.jpg",
+    "검진센터 내부": "검진센터_내부_f4bb21ec1d49942d_1000x220.jpg",
+    "MRI 장비": "MRI_장비_bcb3474c3873195e_490x180.jpg",
+    "CT 장비": "CT_장비_a46872fdd4e3f7b6_490x180.jpg",
+    "모바일 예약시스템": "모바일_예약시스템_a380da48b9ab8eed_1000x250.jpg",
+    "출장검진 버스": "출장검진_버스_dc84d478883be6a3_490x150.jpg",
+    "검진 진행 모습": "검진_진행_모습_4da74828a083f9f6_1000x150.jpg"
+  },
+  "images": {
+    "병원 전경": "병원_전경_9a3c43f754bf5e7d_1000x300.jpg",
+    "인증마크 모음": "인증마크_모음_ad4b1131e18daaa8_490x150.jpg",
+    "검진센터 내부": "검진센터_내부_13535e9ae976adf8_1000x220.jpg",
+    "MRI 장비": "MRI_장비_aacad522896d218e_490x180.jpg",
+    "CT 장비": "CT_장비_3082a1cbe5777ff6_490x180.jpg",
+    "모바일 예약시스템": "모바일_예약시스템_a0c65055ccada7cd_1000x250.jpg",
+    "출장검진 버스": "출장검진_버스_528fbce59dd841b6_490x150.jpg",
+    "검진 진행 모습": "검진_진행_모습_9282b7167d1323bd_1000x150.jpg"
+  }
+}
