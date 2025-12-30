@@ -74,7 +74,7 @@ def main():
     # 2. 사이드바: 입력 및 선택
     with st.sidebar:
         st.header("1. 기본 정보 입력")
-        company = st.text_input("기업명 (고객사)", placeholder="예: 삼성전자")
+        company = st.text_input("기업명 (고객사)", placeholder="예: (주)테슬라")
         mgr_name = st.text_input("담당자명", value="담당자")
         mgr_phone = st.text_input("연락처", placeholder="010-0000-0000")
         mgr_email = st.text_input("이메일")
@@ -191,4 +191,5 @@ if __name__ == "__main__":
     # 비밀번호 확인이 통과되었을 때만 main() 실행
     if check_password():
         main()
+
 
