@@ -1,0 +1,833 @@
+import tkinter as tk
+from tkinter import ttk, filedialog, colorchooser, messagebox
+import re
+import base64
+import os
+import sys
+import json
+import io  # 메모리 상에서 이미지를 처리하기 위해 필요
+from PIL import Image, ImageOps  # 이미지 리사이징/EXIF 회전 보정을 위한 Pillow 라이브러리
+
+# ---------------------------------------------------------
+# 1. 원본 HTML 템플릿
+# ---------------------------------------------------------
+HTML_TEMPLATE = r"""
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2026 뉴고려병원 건강검진 제안서</title>
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+    /* A4 Document Setup */
+    :root {
+        --primary-purple: #4A148C;
+        --secondary-purple: #7B1FA2;
+        --accent-gold: #D4AF37;
+        --text-dark: #222222;
+        --bg-light: #F8F9FA;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact; }
+    body { background-color: #555; font-family: 'Noto Sans KR', sans-serif; font-size: 10.5pt; line-height: 1.5; color: var(--text-dark); }
+    .document-container { width: 210mm; margin: 40px auto; }
+    .page {
+        width: 210mm; height: 297mm; background: white; padding: 20mm;
+        position: relative; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        overflow: hidden; display: flex; flex-direction: column;
+    }
+    @media print {
+        body { background: none; margin: 0; }
+        .document-container { margin: 0; width: 100%; }
+        .page { margin: 0; box-shadow: none; page-break-after: always; width: 100%; height: 100%; }
+    }
+    h1, h2, h3, h4 { font-family: 'Gowun Batang', serif; color: var(--primary-purple); }
+
+    /* Headers & Footers */
+    .page-header { border-bottom: 2px solid var(--primary-purple); padding-bottom: 10px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .page-header h2 { font-size: 18pt; margin: 0; }
+    .page-header span { font-size: 10pt; color: #666; }
+    .page-footer { position: absolute; bottom: 15mm; left: 20mm; right: 20mm; text-align: center; border-top: 1px solid #ddd; padding-top: 10px; font-size: 9pt; color: #999; display: flex; justify-content: space-between; }
+
+    /* Content Elements */
+    .section-title { font-size: 15pt; color: var(--primary-purple); margin-bottom: 15px; display: flex; align-items: center; gap: 8px; border-left: 5px solid var(--accent-gold); padding-left: 10px; }
+    .highlight-box { background-color: #F3E5F5; padding: 20px; margin: 15px 0; border-radius: 8px; }
+    .img-box { width: 100%; height: 220px; background-color: #eee; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; color: #888; border: 1px solid #ddd; overflow: hidden; }
+    .img-box img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* Tables */
+    .proposal-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9pt; }
+    .proposal-table th { background-color: var(--primary-purple); color: white; padding: 7px; text-align: center; border: 1px solid #ddd; }
+    .proposal-table td { border: 1px solid #ddd; padding: 7px; vertical-align: middle; }
+    .tag { background: #E1BEE7; color: #4A148C; padding: 2px 5px; border-radius: 4px; font-size: 8pt; font-weight: bold; margin-right: 4px; }
+
+    /* Cover */
+    .cover-page { background: linear-gradient(135deg, #4A148C 0%, #2E0249 100%); color: white; justify-content: center; text-align: center; }
+    .cover-title { font-size: 38pt; color: white; margin-bottom: 20px; line-height: 1.2; }
+    .cover-year { font-size: 20pt; color: var(--accent-gold); margin-bottom: 30px; display: block; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div class="document-container">
+
+    <div class="page cover-page">
+        <div style="border: 2px solid var(--accent-gold); padding: 80px 70px; width: 100%; margin: 0 auto;">
+            <span class="cover-year">2026 PROPOSAL</span>
+            <h1 class="cover-title">2026 뉴고려병원<br>건강검진 제안서</h1>
+            <p style="font-size: 16pt; margin-bottom: 450px; color: #E1BEE7;">귀사의 건강한 도약을 위한 믿음직한 파트너</p>
+            <div style="text-align: right; margin-top: 50px; font-size: 14pt;">
+                <p style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 10px;">
+                    <strong>수신 :</strong> 임직원 검진 담당자 제위
+                </p>
+                <p>
+                    <strong>제안 :</strong> 뉴고려병원 이준원 팀장
+                </p>
+            </div>
+        </div>
+        <div style="margin-top: auto; font-size: 11pt; color: #D1C4E9;">
+            경기도 김포시 김포한강3로 283 | www.nkhospital.net
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="page-header">
+            <h2>01. 병원 소개 및 인사말</h2>
+            <span>New Goryeo Hospital</span>
+        </div>
+        <div class="img-box" style="height: 300px;">
+            <img src="placeholder_hospital_view.jpg" alt="병원 전경">
+        </div>
+        <div class="highlight-box" style="background: white; padding: 0;">
+            <h3 style="margin-bottom: 20px; font-size: 18pt; text-align: center; color: var(--text-dark);">
+                "지역을 넘어 신뢰의 중심으로,<br>뉴고려병원이 건강을 책임지겠습니다."
+            </h3>
+            <p style="text-align: justify; margin-bottom: 20px;">
+                안녕하십니까. 뉴고려병원 검진사업부입니다.<br>
+                2026년을 맞이하여 귀사의 임직원 여러분께 건강과 활력이 가득하시기를 기원합니다.
+                뉴고려병원은 지난 시간 동안 지역 사회와 기업의 든든한 건강 파트너로서 성장해 왔습니다.
+            </p>
+            <p style="text-align: justify;">
+                본 제안서는 <strong>서북부 최대 규모의 시설</strong>과 <strong>검증된 의료 시스템</strong>을 바탕으로 설계된 맞춤형 건강검진 프로그램을 담고 있습니다.
+                귀사의 소중한 인재들이 최상의 컨디션으로 업무에 임할 수 있도록 최고의 서비스를 약속드립니다.
+            </p>
+        </div>
+        <table class="proposal-table">
+            <tr>
+                <th width="30%">위치</th>
+                <td>경기도 김포시 김포한강3로 283 (장기동)</td>
+            </tr>
+            <tr>
+                <th>규모</th>
+                <td>300병상 규모 종합병원 / 포괄 2차 종합병원</td>
+            </tr>
+        </table>
+        <div class="page-footer"><span>2026 Health Checkup Proposal</span><span>Page 1</span></div>
+    </div>
+
+    <div class="page">
+        <div class="page-header">
+            <h2>02. 병원 규모 및 전문성</h2>
+            <span>종합병원 기반의 검진 시스템</span>
+        </div>
+
+        <h3 class="section-title">포괄 2차 종합병원 선정</h3>
+        <p style="margin-bottom: 15px;">
+            지역 내 필수의료를 포괄적으로 제공하며, 중등도 이상의 진료 및 수술, 응급진료가 24시간 가능한 병원입니다.
+        </p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+             <div class="img-box" style="height: 150px;">
+                <img src="placeholder_cert_mark.jpg" alt="인증마크 모음">
+            </div>
+            <div class="highlight-box" style="margin: 0; display: flex; flex-direction: column; justify-content: center;">
+                <ul style="padding-left: 20px; line-height: 1.8;">
+                    <li><strong>보건복지부</strong> 의료기관 인증 획득</li>
+                    <li><strong>산업안전보건공단</strong> 평가 2년 연속 S등급</li>
+                    <li><strong>심혈관 중재시술</strong> 인증 의료기관</li>
+                    <li><strong>지역응급의료센터</strong> 지정 (365일 24시간)</li>
+                </ul>
+            </div>
+        </div>
+
+        <h3 class="section-title">12개 전문 센터 협진</h3>
+        <p style="margin-bottom: 10px;">검진 결과 이상 소견 시, 원내 12개 전문 센터로 즉시 연계가 가능합니다.</p>
+        <table class="proposal-table">
+            <tr>
+                <td width="25%"><strong>뇌신경센터</strong></td>
+                <td>뇌졸중, 뇌혈관 질환 예방 및 치료</td>
+                <td width="25%"><strong>심혈관센터</strong></td>
+                <td>심근경색, 협심증 전문 시술</td>
+            </tr>
+            <tr>
+                <td><strong>소화기센터</strong></td>
+                <td>위/대장 내시경 및 용종 제거</td>
+                <td><strong>관절/척추센터</strong></td>
+                <td>비수술/수술적 통증 치료</td>
+            </tr>
+            <tr>
+                <td><strong>응급의료센터</strong></td>
+                <td>신속한 진단 및 처치 (24시간)</td>
+                <td><strong>외상센터</strong></td>
+                <td>산업재해, 교통사고 외상 진료</td>
+            </tr>
+        </table>
+
+        <div class="page-footer"><span>2026 Health Checkup Proposal</span><span>Page 2</span></div>
+    </div>
+
+    <div class="page">
+        <div class="page-header">
+            <h2>03. 검진센터 시설 특장점</h2>
+            <span>서북부 최대 규모 One-Stop 시스템</span>
+        </div>
+
+        <div class="img-box">
+             <img src="placeholder_center_interior.jpg" alt="검진센터 내부">
+        </div>
+
+        <h3 class="section-title">700평 단일 규모 & One-Stop 시스템</h3>
+        <p>
+            뉴고려병원 건강검진센터는 약 700평 규모의 단일 층(One-floor) 구조로 설계되어 있습니다.
+            접수부터 기초검사, 초음파, 내시경까지 <strong>층간 이동 없이 한 층에서</strong> 검사가 진행되어 불필요한 동선을 최소화했습니다.
+        </p>
+
+        <div style="margin-top: 30px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; text-align: center;">
+            <div style="background:#f4f4f4; padding:15px; border-radius:8px;">
+                <i class="fas fa-file-signature" style="font-size:20pt; color:var(--secondary-purple); margin-bottom:10px;"></i><br>
+                <strong>01. 접수</strong>
+            </div>
+            <div style="background:#f4f4f4; padding:15px; border-radius:8px;">
+                <i class="fas fa-stethoscope" style="font-size:20pt; color:var(--secondary-purple); margin-bottom:10px;"></i><br>
+                <strong>02. 기초검사</strong>
+            </div>
+            <div style="background:#f4f4f4; padding:15px; border-radius:8px;">
+                <i class="fas fa-wave-square" style="font-size:20pt; color:var(--secondary-purple); margin-bottom:10px;"></i><br>
+                <strong>03. 초음파</strong>
+            </div>
+            <div style="background:#f4f4f4; padding:15px; border-radius:8px;">
+                <i class="fas fa-procedures" style="font-size:20pt; color:var(--secondary-purple); margin-bottom:10px;"></i><br>
+                <strong>04. 내시경</strong>
+            </div>
+        </div>
+        <p style="text-align: center; margin-top: 10px; font-weight: bold; color: var(--primary-purple);">
+            ▲ 이 모든 과정이 한 층에서 이루어집니다.
+        </p>
+
+        <div class="page-footer"><span>2026 Health Checkup Proposal</span><span>Page 3</span></div>
+    </div>
+
+    <div class="page">
+        <div class="page-header">
+            <h2>04. 첨단 의료장비 및 전문 의료진</h2>
+            <span>대학병원급 정밀 검사 장비</span>
+        </div>
+
+        <h3 class="section-title">최첨단 영상의학 장비 보유</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+                 <div class="img-box" style="height: 180px;">
+                    <img src="placeholder_mri.jpg" alt="MRI 장비">
+                </div>
+                <h4>3.0T MRI (Philips) 2대</h4>
+                <p style="font-size: 9pt;">뇌, 혈관, 관절 등의 미세한 병변까지 정밀하게 검사 가능한 대학병원급 최상위 기종입니다.</p>
+            </div>
+            <div>
+                 <div class="img-box" style="height: 180px;">
+                    <img src="placeholder_ct.jpg" alt="CT 장비">
+                </div>
+                <h4>128ch MDCT (GE)</h4>
+                <p style="font-size: 9pt;">폐, 복부, 심장의 3차원 입체 영상을 빠르고 정확하게 구현하여 방사선 피폭을 최소화합니다.</p>
+            </div>
+        </div>
+
+        <h3 class="section-title" style="margin-top: 30px;">검진센터 전문 의료진 상주</h3>
+        <p>
+            소화기내과, 영상의학과, 직업환경의학과, 부인과, 치과 등 각 분과별 전문의가 센터 내에 상주하여 직접 검사 및 판독을 시행합니다.
+        </p>
+        <div class="highlight-box">
+            <ul style="display: flex; justify-content: space-around; list-style: none; font-weight: bold;">
+                <li><i class="fas fa-user-md"></i> 소화기내과</li>
+                <li><i class="fas fa-x-ray"></i> 영상의학과</li>
+                <li><i class="fas fa-industry"></i> 직업환경의학과</li>
+                <li><i class="fas fa-tooth"></i> 치과</li>
+            </ul>
+        </div>
+
+        <div class="page-footer"><span>2026 Health Checkup Proposal</span><span>Page 4</span></div>
+    </div>
+
+    <div class="page">
+        <div class="page-header">
+            <h2>05. 수검자 편의 서비스</h2>
+            <span>고객 중심의 편리한 검진 환경</span>
+        </div>
+
+        <table class="proposal-table" style="margin-bottom: 25px;">
+            <tr>
+                <th width="20%" style="font-size:12pt;"><i class="fas fa-calendar-alt"></i><br>일요일 검진</th>
+                <td>
+                    <strong>직장인을 위한 일요일 검진 실시</strong><br>
+                    평일에 시간을 내기 어려운 분들을 위해 연 3회 일요일 검진을 운영합니다.<br>
+                    <span style="color: #666; font-size: 9pt;">(예정: 9월, 11월, 12월 / 병원 사정에 따라 변동 가능)</span>
+                </td>
+            </tr>
+            <tr>
+                <th style="font-size:12pt;"><i class="fas fa-parking"></i><br>주차 지원</th>
+                <td>
+                    <strong>총 309대 규모 주차 공간 확보</strong><br>
+                    원내 주차장 및 임시 장기 7 공영주차장 주차권을 지원하여 주차 불편을 해소했습니다.
+                </td>
+            </tr>
+            <tr>
+                <th style="font-size:12pt;"><i class="fas fa-mobile-alt"></i><br>모바일 시스템</th>
+                <td>
+                    <strong>전용 예약 사이트 및 모바일 문진</strong><br>
+                    - 예약부터 문진표 작성, 결과 조회까지 모바일로 간편하게 진행<br>
+                    - 검진 전 주의사항 및 위치 정보 자동 안내
+                </td>
+            </tr>
+            <tr>
+                <th style="font-size:12pt;"><i class="fas fa-link"></i><br>플랫폼 제휴</th>
+                <td>
+                    <strong>국내 15개 검진 플랫폼 계약 완료</strong><br>
+                    GC케어, 인피니트케어, 현대이지웰 등 주요 플랫폼과 연동되어 예약 및 정산이 원활합니다.
+                </td>
+            </tr>
+        </table>
+
+        <div class="img-box" style="height: 250px;">
+             <img src="placeholder_mobile_app.jpg" alt="모바일 예약 시스템">
+        </div>
+
+        <div class="page-footer"><span>2026 Health Checkup Proposal</span><span>Page 5</span></div>
+    </div>
+
+    <div class="page">
+        <div class="page-header">
+            <h2>06. 기업 맞춤형 지원 시스템</h2>
+            <span>산업안전보건 및 사후관리</span>
+        </div>
+
+        <h3 class="section-title">특수건강검진 및 출장검진</h3>
+        <p>뉴고려병원은 <strong>특수건강진단 지정 기관</strong>으로 산업안전보건법에 따른 필수 검진이 가능합니다.</p>
+        <div style="display: flex; gap: 15px; margin-top: 15px;">
+            <div style="flex: 1;">
+                 <div class="img-box" style="height: 150px;">
+                    <img src="placeholder_bus.jpg" alt="출장 검진 버스">
+                </div>
+                <p style="text-align: center; font-weight: bold;">출장검진 버스 및 청력차량 보유</p>
+            </div>
+            <div style="flex: 1; padding: 10px; background: #f9f9f9; font-size: 9.5pt;">
+                <ul style="padding-left: 20px;">
+                    <li>공단검진, 종합검진, 특수검진 동시 진행 가능</li>
+                    <li>사업장 방문 출장 검진 지원</li>
+                    <li>보건관리전문기관 평가 S등급 (보건관리 대행 가능)</li>
+                </ul>
+            </div>
+        </div>
+
+        <h3 class="section-title" style="margin-top: 30px;">체계적인 사후관리 (Follow-up)</h3>
+        <div class="highlight-box">
+            <ul style="list-style: none;">
+                <li style="margin-bottom: 10px;">
+                    <strong><i class="fas fa-user-nurse"></i> CRM 전담 간호사 배정</strong><br>
+                    유소견자 발생 시 전문 간호사가 직접 상담하고 진료 예약을 지원합니다.
+                </li>
+                <li style="margin-bottom: 10px;">
+                    <strong><i class="fas fa-file-medical-alt"></i> 공상 및 산재 처리 지원</strong><br>
+                    직업환경의학과 및 원무팀 협조를 통해 업무상 재해 처리를 위한 행정적 도움을 드립니다.
+                </li>
+            </ul>
+        </div>
+
+        <div class="page-footer"><span>2026 Health Checkup Proposal</span><span>Page 6</span></div>
+    </div>
+
+    <div class="page">
+        <div class="page-header">
+            <h2>07. 검진 프로그램 제안 (A그룹)</h2>
+            <span>기본 정밀 종합검진 (전 직원 대상)</span>
+        </div>
+
+        <table class="proposal-table">
+            <tr>
+                <th width="15%">구분</th>
+                <th>상세 항목 및 설명</th>
+            </tr>
+            <tr>
+                <td><strong>기초/신체</strong></td>
+                <td>신장, 체중, 비만도, 시력, 청력, 혈압, 허리둘레, 인바디(체성분)</td>
+            </tr>
+            <tr>
+                <td><strong>혈액/소변</strong></td>
+                <td>
+                    <strong>총 90여종 정밀 분석</strong><br>
+                    간기능, 고지혈증, 당뇨, 신장기능, 통풍, 췌장효소, 빈혈, 혈액형, 관절염,
+                    전해질, 갑상선기능, 간염(A/B/C형), 매독/에이즈, 종양표지자(암표지자) 등
+                </td>
+            </tr>
+            <tr>
+                <td><strong>장비 검사</strong></td>
+                <td>
+                    흉부 X-ray (폐결핵/폐렴), 심전도 (부정맥), 안압/안저 검사,<br>
+                    <strong>위내시경 (수면 포함)</strong> - 용종 발견 시 제거 가능
+                </td>
+            </tr>
+            <tr>
+                <td style="background-color: #E1BEE7; color: #4A148C; font-weight: bold;">선택 정밀<br>(택 1)</td>
+                <td>
+                    <strong>아래 항목 중 1가지 선택</strong><br>
+                    1. <span class="tag">초음파</span> 갑상선 초음파 / 경동맥 초음파 / 복부비만 CT<br>
+                    2. <span class="tag">CT</span> 뇌 CT / 저선량 폐 CT / 요추 CT / 경추 CT<br>
+                    3. <span class="tag">여성</span> 유방 초음파 / 경질(자궁) 초음파<br>
+                    4. <span class="tag">기타</span> 골밀도(QCT)+비타민D / 동맥경화도(ABI)
+                </td>
+            </tr>
+        </table>
+        <p style="margin-top: 10px; font-size: 9pt; color: #666;">
+            ※ 위내시경 수면비용 포함 / 조직검사 및 용종제거 비용 별도 / 대장내시경 변경 시 추가비용 발생
+        </p>
+        <div class="img-box" style="height: 150px; margin-top: 20px;">
+             <img src="placeholder_program_a.jpg" alt="검진 진행 모습">
+        </div>
+
+        <div class="page-footer"><span>2026 Health Checkup Proposal</span><span>Page 7</span></div>
+    </div>
+
+    <div class="page">
+        <div class="page-header">
+            <h2>08. 검진 프로그램 제안 (B/C그룹)</h2>
+            <span>연령별/직급별 맞춤 심화 정밀검진</span>
+        </div>
+
+        <h3 class="section-title">B그룹 : 심화 정밀형 (35세 이상 권장)</h3>
+        <table class="proposal-table" style="margin-bottom: 30px;">
+            <tr>
+                <th width="20%">구분</th>
+                <th>주요 추가/선택 항목</th>
+            </tr>
+            <tr>
+                <td rowspan="2"><strong>특화 선택<br>(택 1)</strong></td>
+                <td>
+                    <span class="tag">소화기</span> <strong>대장수면내시경</strong><br>
+                    <span style="font-size:8pt;">(대장암 가족력 있거나 40세 이상 추천, 용종 제거 시 비용 별도)</span>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <span class="tag">기타정밀</span><br>
+                    - 심장 초음파 (심부전, 판막질환)<br>
+                    - 알레르기 91종 검사 (음식/호흡기 MAST)<br>
+                    - 부정맥 웨어러블 검사 (S-Patch)<br>
+                    - 알츠온 치매 위험도 혈액검사
+                </td>
+            </tr>
+        </table>
+
+        <h3 class="section-title">C그룹 : 프리미엄형 (45세 이상 권장)</h3>
+        <table class="proposal-table">
+            <tr>
+                <th width="20%">구분</th>
+                <th>프리미엄 포함 항목</th>
+            </tr>
+            <tr>
+                <td><strong>뇌 정밀</strong></td>
+                <td>
+                    <span class="tag">MRI/MRA</span> <strong>뇌 MRI + 뇌 MRA</strong> 동시 촬영<br>
+                    (뇌종양, 뇌경색, 뇌동맥류 등 뇌혈관 질환 초정밀 진단)
+                </td>
+            </tr>
+            <tr>
+                <td><strong>척추/노화</strong></td>
+                <td>
+                    경추 MRI 또는 요추 MRI 중 택 1<br>
+                    또는 <strong>에피클락(Epiclock)</strong> 생체나이 유전자 분석 검사
+                </td>
+            </tr>
+        </table>
+
+        <div class="highlight-box">
+            <strong><i class="fas fa-check-circle"></i> 프로그램 공통 사항</strong><br>
+            <span style="font-size: 9.5pt;">
+                - 모든 그룹은 A그룹의 기본 검사 항목을 포함합니다.<br>
+                - 검진 비용 및 세부 항목은 귀사의 예산과 요구사항에 따라 <strong>맞춤형 조정(Customizing)</strong>이 가능합니다.
+            </span>
+        </div>
+
+        <div class="page-footer"><span>2026 Health Checkup Proposal</span><span>Page 8</span></div>
+    </div>
+
+    <div class="page">
+        <div class="page-header">
+            <h2>09. 주요 제휴 현황</h2>
+            <span>약 3,200여 개 기업이 선택한 병원</span>
+        </div>
+
+        <div style="font-size: 9.5pt; margin-bottom: 30px;">
+            <p style="margin-bottom: 15px;"><strong>■ 관공서 및 공공기관</strong><br>
+            김포시청, 파주시청, 국민건강보험공단, 한국가스안전공사, 김포도시관리공사, KT&G, 김포세무서 등</p>
+
+            <p style="margin-bottom: 15px;"><strong>■ 금융기관</strong><br>
+            우리은행, KB국민은행, 신한은행, IBK기업은행, 농협중앙회, 수협, 새마을금고 등</p>
+
+            <p style="margin-bottom: 15px;"><strong>■ 일반기업 및 건설사</strong><br>
+            LG화학, LG CNS, 삼성케미칼, 이마트, 쿠팡, CJ대한통운, 현대건설, GS건설, 롯데건설 등</p>
+        </div>
+
+        <div class="highlight-box" style="text-align: center; border-left: none; background-color: var(--primary-purple); color: white; margin-top: auto;">
+            <h3 style="color: var(--accent-gold); margin-bottom: 10px;">[검진 문의 및 상담]</h3>
+            <p style="font-size: 14pt; margin-bottom: 5px;"><strong>Tel. 1833 - 9988</strong></p>
+            <p style="font-size: 11pt;">뉴고려병원 검진사업부</p>
+        </div>
+
+        <div style="text-align: right; margin-top: 30px;">
+            <p style="font-size: 12pt; margin-bottom: 10px;">귀사의 무궁한 발전을 기원합니다.</p>
+            <h3 style="font-size: 16pt; color: var(--text-dark);">뉴고려병원장</h3>
+        </div>
+
+        <div class="page-footer"><span>2026 Health Checkup Proposal</span><span>Page 9</span></div>
+    </div>
+
+</div>
+
+</body>
+</html>
+"""
+
+
+# ---------------------------------------------------------
+# 2. GUI 어플리케이션 클래스
+# ---------------------------------------------------------
+class ProposalEditorApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("제안서 생성기 v1.3 (이미지 로컬 저장/사이즈별 리사이징)")
+        self.root.geometry("475x760")
+
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+
+        # 앱 기준 폴더(설정/이미지 저장). 업로드 원본 경로를 저장하지 않기 위해
+        # 프로그램 폴더 내부(proposal_assets)에 복사/리사이즈해서 저장합니다.
+        self.app_dir = self.get_app_dir()
+        self.assets_dir = os.path.join(self.app_dir, "proposal_assets")
+        self.images_dir = os.path.join(self.assets_dir, "images")
+        os.makedirs(self.images_dir, exist_ok=True)
+
+        # 설정 파일 경로 (이미지의 '파일명'만 저장)
+        self.config_file = os.path.join(self.assets_dir, "proposal_settings.json")
+
+        # 데이터 변수
+        self.recipient_var = tk.StringVar(value="임직원 검진 담당자 제위")
+        self.proposer_var = tk.StringVar(value="뉴고려병원 이준원 팀장")
+        self.phone_var = tk.StringVar(value="1833 - 9988")
+
+        self.primary_color = "#4A148C"
+        self.accent_color = "#D4AF37"
+
+        # 이미지 파일 경로 저장용 딕셔너리
+        self.image_map = {
+            "병원 전경": {"placeholder": "placeholder_hospital_view.jpg", "path": None},
+            "인증마크 모음": {"placeholder": "placeholder_cert_mark.jpg", "path": None},
+            "검진센터 내부": {"placeholder": "placeholder_center_interior.jpg", "path": None},
+            "MRI 장비": {"placeholder": "placeholder_mri.jpg", "path": None},
+            "CT 장비": {"placeholder": "placeholder_ct.jpg", "path": None},
+            "모바일 예약시스템": {"placeholder": "placeholder_mobile_app.jpg", "path": None},
+            "출장검진 버스": {"placeholder": "placeholder_bus.jpg", "path": None},
+            "검진 진행 모습": {"placeholder": "placeholder_program_a.jpg", "path": None},
+        }
+
+        # HTML에서 실제 표시되는 이미지 박스 크기(픽셀) 기준으로 리사이즈
+        # - .page 내용 폭은 210mm - (20mm*2) = 170mm이며, 이를 약 1000px로 가정(150dpi 근사치)
+        # - .img-box는 기본 height 220px이며, 일부는 inline style로 높이가 지정되어 있습니다.
+        self.image_target_sizes = {
+            "병원 전경": (1000, 300),
+            "검진센터 내부": (1000, 220),
+            "MRI 장비": (490, 180),
+            "CT 장비": (490, 180),
+            "모바일 예약시스템": (1000, 250),
+            "출장검진 버스": (490, 150),
+            # 템플릿에 실제로 쓰이지 않거나 크기가 다른 경우 기본값으로 처리
+            "인증마크 모음": (490, 150),
+            "검진 진행 모습": (1000, 150),
+        }
+
+        # 앱 시작 시 저장된 설정 불러오기
+        self.load_settings()
+
+        self.create_widgets()
+
+
+    @staticmethod
+    def get_app_dir():
+        """
+        실행 파일(.py / .exe) 기준 폴더를 반환합니다.
+        - Python 실행: 현재 파일(proposal_maker.py)이 있는 폴더
+        - 패키징(예: PyInstaller) 실행: 실행 파일(.exe)이 있는 폴더
+        """
+        if getattr(sys, "frozen", False):
+            return os.path.dirname(sys.executable)
+        return os.path.dirname(os.path.abspath(__file__))
+
+    def get_target_size(self, key):
+        """이미지 키별 목표 (가로,세로) 픽셀 크기 반환"""
+        return self.image_target_sizes.get(key, (1000, 220))
+
+    def _resize_cover(self, img, target_w, target_h):
+        """HTML의 object-fit: cover와 동일하게 중앙 크롭 후 지정 크기로 리사이즈"""
+        src_w, src_h = img.size
+        if src_w <= 0 or src_h <= 0:
+            return img.resize((target_w, target_h), Image.LANCZOS)
+
+        target_ratio = target_w / target_h
+        src_ratio = src_w / src_h
+
+        if src_ratio > target_ratio:
+            # 가로가 더 넓음 -> 좌우 크롭
+            new_w = int(src_h * target_ratio)
+            left = int((src_w - new_w) / 2)
+            box = (left, 0, left + new_w, src_h)
+        else:
+            # 세로가 더 김 -> 상하 크롭
+            new_h = int(src_w / target_ratio)
+            top = int((src_h - new_h) / 2)
+            box = (0, top, src_w, top + new_h)
+
+        img = img.crop(box)
+        return img.resize((target_w, target_h), Image.LANCZOS)
+
+    def copy_resize_to_local(self, key, src_path):
+        """
+        사용자가 선택한 원본 이미지를 proposal_assets/images로 복사(리사이즈 포함)해서 저장합니다.
+        - 원본 경로는 저장하지 않습니다.
+        - 저장 파일명은 템플릿의 placeholder 이름과 동일하게 유지합니다.
+        """
+        if key not in self.image_map:
+            raise ValueError(f"Unknown image key: {key}")
+
+        placeholder_name = self.image_map[key]["placeholder"]
+        dest_path = os.path.join(self.images_dir, placeholder_name)
+        target_w, target_h = self.get_target_size(key)
+
+        with Image.open(src_path) as img:
+            img = ImageOps.exif_transpose(img)  # 촬영 회전정보 반영
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+
+            img = self._resize_cover(img, target_w, target_h)
+
+            # JPEG로 저장(용량 절감). placeholder가 .jpg 이므로 포맷도 통일
+            img.save(dest_path, format="JPEG", quality=85, optimize=True)
+
+        return dest_path
+
+    def load_settings(self):
+        """저장된 JSON 설정 파일이 있으면 불러와서 image_map에 적용 (원본 경로는 저장/유지하지 않음)"""
+        if not os.path.exists(self.config_file):
+            return
+
+        try:
+            with open(self.config_file, "r", encoding="utf-8") as f:
+                saved_data = json.load(f)
+
+            needs_save = False
+
+            for key, saved_value in saved_data.items():
+                if key not in self.image_map or not saved_value:
+                    continue
+
+                # 새 방식: 파일명만 저장되어 있는 경우
+                candidate1 = os.path.join(self.images_dir, str(saved_value))
+
+                # 구버전 호환: 절대/상대 경로가 저장되어 있는 경우
+                candidate2 = str(saved_value)
+
+                src_path = None
+                if os.path.exists(candidate1):
+                    src_path = candidate1
+                elif os.path.exists(candidate2):
+                    src_path = candidate2
+
+                if not src_path:
+                    continue
+
+                # 항상 로컬 폴더로 복사/리사이즈해서 경로 고정
+                local_path = self.copy_resize_to_local(key, src_path)
+                if os.path.exists(local_path):
+                    self.image_map[key]["path"] = local_path
+                    needs_save = True
+
+
+            # 구버전(절대경로 저장) 등이 로딩되면 즉시 새 포맷(파일명만)으로 저장
+            if needs_save:
+                self.save_settings()
+        except Exception as e:
+            print(f"설정 불러오기 실패: {e}")
+
+    def save_settings(self):
+        """현재 image_map의 '로컬 이미지 파일명'만 JSON 파일로 저장 (원본 업로드 경로 저장 금지)"""
+        try:
+            data_to_save = {}
+            for key, val in self.image_map.items():
+                if val["path"] and os.path.exists(val["path"]):
+                    data_to_save[key] = os.path.basename(val["path"])
+
+            with open(self.config_file, "w", encoding="utf-8") as f:
+                json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"설정 저장 실패: {e}")
+
+    def create_widgets(self):
+        main_frame = ttk.Frame(self.root, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        canvas = tk.Canvas(main_frame)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # --- 섹션 1: 텍스트 정보 ---
+        info_frame = ttk.LabelFrame(scrollable_frame, text="기본 정보 수정", padding="10")
+        info_frame.pack(fill="x", pady=10)
+
+        ttk.Label(info_frame, text="수신 (고객사):").grid(row=0, column=0, sticky="w", pady=5)
+        ttk.Entry(info_frame, textvariable=self.recipient_var, width=40).grid(row=0, column=1, pady=5)
+
+        ttk.Label(info_frame, text="제안자 (담당자):").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Entry(info_frame, textvariable=self.proposer_var, width=40).grid(row=1, column=1, pady=5)
+
+        ttk.Label(info_frame, text="상담 전화번호:").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Entry(info_frame, textvariable=self.phone_var, width=40).grid(row=2, column=1, pady=5)
+
+        # --- 섹션 2: 색상 변경 ---
+        color_frame = ttk.LabelFrame(scrollable_frame, text="브랜드 컬러 변경", padding="10")
+        color_frame.pack(fill="x", pady=10)
+
+        self.btn_primary = tk.Button(color_frame, text="메인 컬러 (보라색 계열)", bg=self.primary_color, fg="white",
+                                     command=self.pick_primary)
+        self.btn_primary.pack(fill="x", pady=2)
+
+        self.btn_accent = tk.Button(color_frame, text="포인트 컬러 (금색 계열)", bg=self.accent_color, fg="black",
+                                    command=self.pick_accent)
+        self.btn_accent.pack(fill="x", pady=2)
+
+        # --- 섹션 3: 이미지 변경 ---
+        img_frame = ttk.LabelFrame(scrollable_frame, text="이미지 교체 (자동 리사이징/저장)", padding="10")
+        img_frame.pack(fill="x", pady=10)
+
+        row_idx = 0
+        for name, data in self.image_map.items():
+            ttk.Label(img_frame, text=f"• {name}").grid(row=row_idx, column=0, sticky="w", pady=5)
+
+            initial_text = "파일 미선택"
+            if data["path"]:
+                initial_text = os.path.basename(data["path"])
+
+            path_label = ttk.Label(img_frame, text=initial_text, foreground="blue" if data["path"] else "gray",
+                                   width=25)
+            path_label.grid(row=row_idx, column=1, padx=5)
+
+            btn = ttk.Button(img_frame, text="찾아보기", command=lambda k=name, l=path_label: self.browse_image(k, l))
+            btn.grid(row=row_idx, column=2)
+
+            row_idx += 1
+
+        # --- 하단 버튼 ---
+        btn_generate = ttk.Button(scrollable_frame, text="HTML 제안서 생성하기", command=self.generate_html)
+        btn_generate.pack(fill="x", pady=30, ipady=10)
+
+    def pick_primary(self):
+        color = colorchooser.askcolor(color=self.primary_color, title="메인 컬러 선택")[1]
+        if color:
+            self.primary_color = color
+            self.btn_primary.config(bg=color)
+
+    def pick_accent(self):
+        color = colorchooser.askcolor(color=self.accent_color, title="포인트 컬러 선택")[1]
+        if color:
+            self.accent_color = color
+            self.btn_accent.config(bg=color)
+
+    def browse_image(self, key, label_widget):
+        filename = filedialog.askopenfilename(
+            title=f"{key} 이미지 선택",
+            filetypes=[("Image files", "*.jpg *.jpeg *.png *.gif")]
+        )
+        if filename:
+            try:
+                local_path = self.copy_resize_to_local(key, filename)
+            except Exception as e:
+                messagebox.showerror("이미지 처리 오류", f"이미지 처리 중 오류가 발생했습니다.\n{e}")
+                return
+
+            self.image_map[key]["path"] = local_path
+            label_widget.config(text=os.path.basename(local_path), foreground="blue")
+            self.save_settings()
+
+    def image_to_base64(self, path):
+        """리사이즈된 로컬 이미지를 Base64로 변환"""
+        try:
+            with open(path, "rb") as f:
+                raw = f.read()
+            encoded_string = base64.b64encode(raw).decode("utf-8")
+            return f"data:image/jpeg;base64,{encoded_string}"
+        except Exception as e:
+            print(f"이미지 처리 오류 ({path}): {e}")
+            return None
+
+    def generate_html(self):
+        html_content = HTML_TEMPLATE
+
+        # 1. 텍스트 치환
+        pattern_recipient = r"(<strong>수신 :</strong>\s*)(.*?)(</p>)"
+        html_content = re.sub(pattern_recipient, fr"\1 {self.recipient_var.get()}\3", html_content)
+
+        pattern_proposer = r"(<strong>제안 :</strong>\s*)(.*?)(</p>)"
+        html_content = re.sub(pattern_proposer, fr"\1 {self.proposer_var.get()}\3", html_content)
+
+        pattern_phone = r"(Tel.\s*)(.*?)(</strong>)"
+        html_content = re.sub(pattern_phone, fr"\1 {self.phone_var.get()}\3", html_content)
+
+        # 2. 색상 치환
+        html_content = html_content.replace("--primary-purple: #4A148C;", f"--primary-purple: {self.primary_color};")
+        html_content = html_content.replace("--accent-gold: #D4AF37;", f"--accent-gold: {self.accent_color};")
+
+        # 3. 이미지 치환
+        for key, data in self.image_map.items():
+            if data["path"]:
+                base64_str = self.image_to_base64(data["path"])
+                if base64_str:
+                    placeholder = data["placeholder"]
+                    html_content = html_content.replace(f'src="{placeholder}"', f'src="{base64_str}"')
+
+        # 4. 파일 저장
+        save_path = filedialog.asksaveasfilename(
+            defaultextension=".html",
+            initialfile="2026_뉴고려병원_건강검진제안서_수정본.html",
+            filetypes=[("HTML Files", "*.html")]
+        )
+
+        if save_path:
+            try:
+                with open(save_path, "w", encoding="utf-8") as f:
+                    f.write(html_content)
+                messagebox.showinfo("성공", f"제안서가 성공적으로 저장되었습니다!\n{save_path}")
+            except Exception as e:
+                messagebox.showerror("저장 오류", f"파일 저장 중 오류가 발생했습니다.\n{e}")
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ProposalEditorApp(root)
+    root.mainloop()
