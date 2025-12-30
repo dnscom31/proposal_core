@@ -5,7 +5,7 @@ from proposal_core import load_price_options, parse_data_from_excel, render_html
 
 EXCEL_FILENAME = "2025 건강검진 견적서_표준.xlsx"
 
-st.set_page_config(page_title="2026 기업건강검진 제안서 생성기", layout="wide")
+st.set_page_config(page_title="2026 기업건강검진 견적서 생성기", layout="wide")
 
 @st.cache_data
 def load_excel_options():
@@ -139,3 +139,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
