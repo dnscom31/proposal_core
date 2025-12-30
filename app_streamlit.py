@@ -1,20 +1,11 @@
 # app_streamlit.py
 import streamlit as st
-import extra_streamlit_components as stx
 from pathlib import Path
-import time
 from proposal_core import load_price_options, parse_data_from_excel, render_html_string, generate_excel_bytes
 
 EXCEL_FILENAME = "2025 건강검진 견적서_표준.xlsx"
 
 st.set_page_config(page_title="2026 기업건강검진 제안서 생성기", layout="wide")
-
-# --- 쿠키 매니저 초기화 (캐싱하여 리로드 방지) ---
-@st.cache_resource(experimental_allow_widgets=True)
-def get_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_manager()
 
 @st.cache_data
 def load_excel_options():
@@ -32,32 +23,18 @@ def main():
         st.error(f"'{EXCEL_FILENAME}' 파일을 찾을 수 없거나 헤더를 읽을 수 없습니다.")
         st.stop()
 
-    # --- 쿠키에서 저장된 정보 불러오기 ---
-    # 쿠키값을 가져오되, 없으면 빈 문자열 사용
-    cookies = cookie_manager.get_all()
-    
-    default_company = cookies.get("saved_company", "")
-    default_name = cookies.get("saved_name", "담당자")
-    default_phone = cookies.get("saved_phone", "")
-    default_email = cookies.get("saved_email", "")
-
     # 2. 사이드바: 입력 및 선택
     with st.sidebar:
         st.header("1. 기본 정보 입력")
-        st.caption("※ 입력한 정보는 이 브라우저에 자동 저장됩니다.")
-        
-        # value에 쿠키값을 넣어주어 새로고침 시 복원
-        company = st.text_input("기업명 (고객사)", value=default_company, placeholder="예: 삼성전자")
-        mgr_name = st.text_input("담당자명", value=default_name)
-        mgr_phone = st.text_input("연락처", value=default_phone, placeholder="010-0000-0000")
-        mgr_email = st.text_input("이메일", value=default_email)
+        company = st.text_input("기업명 (고객사)", placeholder="예: 삼성전자")
+        mgr_name = st.text_input("담당자명", value="담당자")
+        mgr_phone = st.text_input("연락처", placeholder="010-0000-0000")
+        mgr_email = st.text_input("이메일")
         
         st.divider()
         st.header("2. 금액대 선택")
         selected_prices = []
         for opt in options:
-            # 체크박스 상태도 세션 스테이트로 관리하면 좋지만, 
-            # UX상 매번 초기화되어도 무방하므로 단순화
             if st.checkbox(f"{opt['price_txt']}", key=f"chk_{opt['price_txt']}"):
                 selected_prices.append(opt)
 
@@ -86,7 +63,7 @@ def main():
                 st.markdown(f"**Option {i+1}**")
                 c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
                 
-                # 기본값 계산 로직
+                # 기본값 계산 로직 (Tkinter와 동일)
                 def_name = f"{price_txt}"
                 def_a, def_b, def_c = base_a, base_b, base_c
                 
@@ -122,14 +99,6 @@ def main():
 
     # 4. 생성 및 다운로드
     if st.button("제안서 생성하기 (HTML 미리보기 & 엑셀 생성)", type="primary"):
-        
-        # [핵심] 버튼 클릭 시 현재 입력된 정보를 쿠키에 저장 (유효기간 30일)
-        # expires_at is optional, defaults to 30 days
-        cookie_manager.set("saved_company", company)
-        cookie_manager.set("saved_name", mgr_name)
-        cookie_manager.set("saved_phone", mgr_phone)
-        cookie_manager.set("saved_email", mgr_email)
-        
         with st.spinner("데이터 처리 중..."):
             # 데이터 파싱
             info = {"company": company, "name": mgr_name, "phone": mgr_phone, "email": mgr_email}
@@ -148,7 +117,7 @@ def main():
                 st.components.v1.html(html_str, height=1000, scrolling=True)
             
             with tab2:
-                st.success("생성이 완료되었습니다! (입력 정보가 브라우저에 저장되었습니다)")
+                st.success("생성이 완료되었습니다!")
                 
                 col1, col2 = st.columns(2)
                 with col1:
