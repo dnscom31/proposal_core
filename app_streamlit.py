@@ -102,7 +102,7 @@ def main():
         with st.spinner("데이터 처리 중..."):
             # 데이터 파싱
             info = {"company": company, "name": mgr_name, "phone": mgr_phone, "email": mgr_email}
-            data, summary = parse_data_from_excel(EXCEL_FILENAME, header_row, final_plans)
+            data, summary = parse_data_from_excel(str(Path(EXCEL_FILENAME).resolve()), header_row, final_plans)
             
             # HTML 생성
             html_str = render_html_string(final_plans, data, summary, info)
