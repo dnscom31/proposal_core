@@ -148,7 +148,7 @@ def main():
     st.divider()
 
     # 4. 생성 및 다운로드
-    if st.button("제안서 생성하기 (HTML 미리보기 & 엑셀 생성)", type="primary"):
+    if st.button("견적서 생성하기 (HTML 미리보기 & 엑셀 생성)", type="primary"):
         with st.spinner("데이터 처리 중..."):
             # 데이터 파싱
             info = {"company": company, "name": mgr_name, "phone": mgr_phone, "email": mgr_email}
@@ -171,7 +171,7 @@ def main():
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    filename_xls = f"2026_{company}_건강검진_제안서.xlsx"
+                    filename_xls = f"2026_{company}_건강검진_견적서.xlsx"
                     st.download_button(
                         label="📥 엑셀 파일 다운로드 (.xlsx)",
                         data=excel_bytes,
@@ -179,7 +179,7 @@ def main():
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                 with col2:
-                    filename_html = f"2026_{company}_건강검진_제안서.html"
+                    filename_html = f"2026_{company}_건강검진_견적서.html"
                     st.download_button(
                         label="📥 HTML 파일 다운로드 (.html)",
                         data=html_str,
@@ -191,5 +191,6 @@ if __name__ == "__main__":
     # 비밀번호 확인이 통과되었을 때만 main() 실행
     if check_password():
         main()
+
 
 
