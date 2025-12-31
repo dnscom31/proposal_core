@@ -82,7 +82,6 @@ def main():
         st.divider()
         st.header("2. 금액대 선택")
         selected_prices = []
-        # options가 None일 경우 방지
         if options:
             for opt in options:
                 if st.checkbox(f"{opt['price_txt']}", key=f"chk_{opt['price_txt']}"):
@@ -142,25 +141,22 @@ def main():
                 final_plans.append({
                     "name": p_name,
                     "col_idx": opt['col_idx'],
-                    "a_rule": p_a, "b_rule": p_b, "c_rule": p_c
+                    "a_rule": p_a, "b_rule": p_b, "c_rule": p_c,
+                    # [수정됨] 플랜명이 바뀌어도 원래 가격 정보(예: 30만원)를 알 수 있도록 추가
+                    "price_txt": opt['price_txt']
                 })
 
     st.divider()
 
-    # 4. 생성 및 다운로드
+    # 4. 생성 및 다운로드 (이후 코드는 동일)
     if st.button("견적서 생성하기 (HTML 미리보기 & 엑셀 생성)", type="primary"):
         with st.spinner("데이터 처리 중..."):
-            # 데이터 파싱
             info = {"company": company, "name": mgr_name, "phone": mgr_phone, "email": mgr_email}
             data, summary = parse_data_from_excel(str(Path(EXCEL_FILENAME).resolve()), header_row, final_plans)
             
-            # HTML 생성
             html_str = render_html_string(final_plans, data, summary, info)
-            
-            # 엑셀 생성
             excel_bytes = generate_excel_bytes(final_plans, data, summary, info)
             
-            # 탭으로 보기 분리
             tab1, tab2 = st.tabs(["📄 HTML 미리보기", "💾 다운로드"])
             
             with tab1:
@@ -168,29 +164,16 @@ def main():
             
             with tab2:
                 st.success("생성이 완료되었습니다!")
-                
                 col1, col2 = st.columns(2)
                 with col1:
                     filename_xls = f"2026_{company}_건강검진_견적서.xlsx"
-                    st.download_button(
-                        label="📥 엑셀 파일 다운로드 (.xlsx)",
-                        data=excel_bytes,
-                        file_name=filename_xls,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                    st.download_button("📥 엑셀 파일 다운로드 (.xlsx)", excel_bytes, filename_xls, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 with col2:
                     filename_html = f"2026_{company}_건강검진_견적서.html"
-                    st.download_button(
-                        label="📥 HTML 파일 다운로드 (.html)",
-                        data=html_str,
-                        file_name=filename_html,
-                        mime="text/html"
-                    )
+                    st.download_button("📥 HTML 파일 다운로드 (.html)", html_str, filename_html, "text/html")
 
 if __name__ == "__main__":
-    # 비밀번호 확인이 통과되었을 때만 main() 실행
     if check_password():
         main()
-
 
 
