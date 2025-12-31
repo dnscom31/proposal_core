@@ -210,7 +210,12 @@ def render_html_string(plans, data, summary, info):
             if "스마트암검사" in item['name']:
                 name_style = " style='white-space:nowrap; letter-spacing:-1.5px;'"
             
-            row_str = f"<tr><td class='item-name-cell'><div{name_style}>{sub_tag}{item['name']}</div></td>"
+            # [수정] 우대수가 행 스타일 (회색 배경)
+            tr_style = ""
+            if item['name'] == "우대수가":
+                tr_style = " style='background-color:#F0F2F5; font-weight:bold;'"
+
+            row_str = f"<tr{tr_style}><td class='item-name-cell'><div{name_style}>{sub_tag}{item['name']}</div></td>"
             
             for c in range(cols_cnt):
                 if skip_map[r][c]: continue
@@ -334,18 +339,18 @@ def render_html_string(plans, data, summary, info):
                     <div style="flex: 0.8; border-left:3px solid #ddd; padding-left:20px; color:#2c3e50;">
                         <span style="font-weight:bold; display:block; margin-bottom:8px; font-size:13px; color:#c0392b;">[비고: MRI 정밀 장비 안내]</span>
                         <span style="font-weight:bold; font-size:14px; color:#000;">Full Protocol Scan 시행</span><br>
-                        <span style="color:#666; font-size:11px;">(Spot protocol 아님)</span><br>
+                        <span style="color:#666; font-size:11px;">(진단적 가치 없는 검사는 하지 않습니다.)</span><br>
                         <span class="highlight-text" style="font-size:14px;">최신 3.0T MRI 장비 보유</span>
                     </div>
                 </div>
                 <div style="margin-top:12px; font-style:italic; color:#666; font-size: 11px; padding-left:5px;">
-                (예시: 70만원형 기본 [A5, B1, C1] → 변경 [A1, B3, C1] 또는 [A1, B2, C2] 등 자유롭게 조합 가능)
+                * 수면 내시경의 경우 80세까지 진행 가능합니다.
                 </div>
             </div>
 
             <div class="program-grid">
                 <div class="grid-box common-box">
-                    <div class="grid-header header-common">2. 상세 검진 항목 및 그룹 구성</div>
+                    <div class="grid-header header-common">2. 상세 검진 항목 및 그룹 구성 요약</div>
                     <div class="grid-sub-header">공통 항목 <span style="font-weight:normal;">(위내시경 포함)</span></div>
                     <div class="grid-content">
                         간기능 | 간염 | 순환기계 | 당뇨 | 췌장기능 | 철결핍성 | 빈혈 | 혈액질환 | 전해질 | 신장기능 | 골격계질환<br>
@@ -358,7 +363,7 @@ def render_html_string(plans, data, summary, info):
                 <div class="grid-row">
                     <div class="grid-col" style="flex: 1.2;">
                         <div class="grid-box">
-                            <div class="grid-header header-a">A 그룹 (정밀)</div>
+                            <div class="grid-header header-a">A 그룹</div>
                             <div class="grid-content-list">
                                 <div>[01] 갑상선초음파</div> <div>[10] 골다공증QCT+비타민D</div>
                                 <div>[02] 경동맥초음파</div> <div>[11] 혈관협착도ABI</div>
@@ -374,7 +379,7 @@ def render_html_string(plans, data, summary, info):
                     </div>
                     <div class="grid-col" style="flex: 1;">
                         <div class="grid-box">
-                            <div class="grid-header header-b">B 그룹 (특화)</div>
+                            <div class="grid-header header-b">B 그룹</div>
                             <div class="grid-content-list">
                                 <div>[가] 대장수면내시경</div> <div>[마] 부정맥검사S-PATCH</div>
                                 <div>[나] 심장초음파</div> <div>[바] [혈액]알레르기검사</div>
@@ -384,13 +389,13 @@ def render_html_string(plans, data, summary, info):
                             </div>
                         </div>
                         <div class="grid-box" style="margin-top:5px; flex-grow:1;">
-                            <div class="grid-header header-c">C 그룹 (VIP)</div>
+                            <div class="grid-header header-c">C 그룹</div>
                             <div class="grid-content-list">
                                 <div>[A] 뇌MRI+MRA</div> 
-                                <div style="letter-spacing:-1.5px; white-space:nowrap;">[D] [혈액]스마트암검사(남6/여7종)</div>
-                                <div>[G] 췌장MRI</div> <div>[E] [혈액]선천적 유전자검사</div>
-                                <div>[B] 경추MRI</div> <div>[F] [혈액]에피클락 (생체나이)</div>
-                                <div>[C] 요추MRI</div>
+                                <div style="letter-spacing:-1.5px; white-space:nowrap;">[E] [혈액]스마트암검사(남6/여7종)</div>
+                                <div>[B] 췌장MRI</div> <div>[F] [혈액]선천적 유전자검사</div>
+                                <div>[C] 경추MRI</div> <div>[G] [혈액]에피클락 (생체나이)</div>
+                                <div>[D] 요추MRI</div>
                             </div>
                         </div>
                     </div>
@@ -408,15 +413,16 @@ def render_html_string(plans, data, summary, info):
             </div>
     """
 
-    table_a = render_table_html("4. A 그룹 (정밀검사)", data.get('A', []))
-    table_b = render_table_html("5. B 그룹 (특화검사)", data.get('B', []), footer="* A그룹 2개를 제외하고 B그룹 1개 선택 가능")
-    table_c = render_table_html("6. C 그룹 (VIP검사)", data.get('C', []), footer="* A그룹 4개를 제외하고 C그룹 1개 선택 가능")
+    table_a = render_table_html("4. A 그룹 ", data.get('A', []))
+    table_b = render_table_html("5. B 그룹 ", data.get('B', []), footer="* A그룹 2개를 제외하고 B그룹 1개 선택 가능")
+    table_c = render_table_html("6. C 그룹 ", data.get('C', []), footer="* A그룹 4개를 제외하고 C그룹 1개 선택 가능")
     
     equip_data = (data.get('EQUIP', []) or []) + (data.get('COMMON_BLOOD', []) or [])
     
     # [추가] 우대수가 행 생성 (HTML용)
     price_vals = []
     for p in plans:
+        # [수정] 가격 표시 로직: price_txt 우선 사용하되, 없으면 name에서 추출
         txt = p.get('price_txt', p['name'])
         nums = re.findall(r'\d+', str(txt))
         if nums:
@@ -510,8 +516,8 @@ def generate_excel_bytes(plans, data, summary, info):
         "• 유전자검사 20종 (기본제공) ⇄ A그룹 1개 로 변경 가능\n"
         "• 공단 위암 대상자 위내시경 진행 시 A그룹 추가 1가지 선택 가능\n\n"
         "[비고: MRI 정밀 장비 안내]\n"
-        "Full Protocol Scan 시행 (Spot protocol 아님) / 최신 3.0T MRI 장비 보유\n"
-        "(예시: 70만원형 기본 [A5, B1, C1] → 변경 [A1, B3, C1] 또는 [A1, B2, C2] 등 자유롭게 조합 가능)"
+        "Full Protocol Scan 시행 (진단적 가치 없는 검사는 하지 않습니다.) / 최신 3.0T MRI 장비 보유\n"
+        "수면 내시경의 경우 80세까지 진행 가능합니다."
     )
     start_r = current_row
     end_r = current_row + 6
@@ -524,13 +530,14 @@ def generate_excel_bytes(plans, data, summary, info):
     current_row += 8
 
     # 상세 항목
-    ws.cell(row=current_row, column=1, value="2. 상세 검진 항목 및 그룹 구성").font = Font(bold=True, size=12, color="2C3E50")
+    ws.cell(row=current_row, column=1, value="2. 상세 검진 항목 및 그룹 구성 요약").font = Font(bold=True, size=12, color="2C3E50")
     current_row += 1
     
     text_common = "간기능 | 간염 | 순환기계 | 당뇨 | 췌장기능 | 철결핍성 | 빈혈 | 혈액질환 | 전해질 | 신장기능 | 골격계질환\n감염성 | 갑상선기능 | 부갑상선기능 | 종양표지자 | 소변 등 80여종 혈액(소변)검사\n심전도 | 신장 | 체중 | 혈압 | 시력 | 청력 | 체성분 | 건강유형분석 | 폐기능 | 안저 | 안압\n혈액점도검사 | 유전자20종 | 흉부X-ray | 복부초음파 | 위수면내시경\n(여)자궁경부세포진 | (여)유방촬영 - #30세이상 권장#"
     text_a = "[01] 갑상선초음파  [10] 골다공증QCT+비타민D\n[02] 경동맥초음파  [11] 혈관협착도ABI\n[03] (여)경질초음파  [12] (여)액상 자궁경부세포진\n[04] 뇌CT  [13] (여) HPV바이러스\n[05] 폐CT  [14] (여)(혈액)마스토체크:유방암\n[06] 요추CT  [15] (혈액)NK뷰키트\n[07] 경추CT  [16] (여)(혈액)여성호르몬\n[08] 심장MDCT  [17] (남)(혈액)남성호르몬\n[09] 복부비만CT"
     text_b = "[가] 대장수면내시경  [마] 부정맥검사S-PATCH\n[나] 심장초음파  [바] [혈액]알레르기검사\n[다] (여)유방초음파  [사] [혈액]알츠온:치매위험도\n[라] [분변]대장암_얼리텍  [아] [혈액]간섬유화검사\n[자] 폐렴예방접종:15가"
-    text_c = "[A] 뇌MRI+MRA  [D] [혈액]스마트암검사(남6/여7종)\n[G] 췌장MRI  [E] [혈액]선천적 유전자검사\n[B] 경추MRI  [F] [혈액]에피클락 (생체나이)\n[C] 요추MRI"
+    # [수정] 백업 파일대로 C그룹 원복 및 췌장MRI 포함
+    text_c = "[A] 뇌MRI+MRA  [E] [혈액]스마트암검사(남6/여7종)\n[B] 췌장MRI  [F] [혈액]선천적 유전자검사\n[C] 경추MRI  [G] [혈액]에피클락 (생체나이)\n[D] 요추MRI"
 
     box_start_row = current_row
     ws.cell(row=current_row, column=1, value="공통 항목 (위내시경 포함)").font = Font(bold=True, color="FFFFFF")
@@ -566,9 +573,9 @@ def generate_excel_bytes(plans, data, summary, info):
         draw_box_border(ws, b_start, current_row+3, 1, last_col)
         current_row += 4
 
-    write_group_box("A 그룹\n(정밀)", text_a, "566573", 39)
-    write_group_box("B 그룹\n(특화)", text_b, "7F8C8D", 23)
-    write_group_box("C 그룹\n(VIP)", text_c, "2C3E50", 15)
+    write_group_box("A 그룹", text_a, "566573", 39)
+    write_group_box("B 그룹", text_b, "7F8C8D", 23)
+    write_group_box("C 그룹", text_c, "2C3E50", 15)
     current_row += 1
 
     # Summary
@@ -627,8 +634,15 @@ def generate_excel_bytes(plans, data, summary, info):
             row_vals = [norm(v) for v in item['values']]
             grid.append(row_vals)
             name_val = f"[{item['category']}] {item['name']}" if item.get('category') else item['name']
+            
             c = ws.cell(row=current_row, column=1, value=name_val)
             c.border = thin_border; c.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+            
+            # [수정] 우대수가 행 스타일 적용 (회색 배경)
+            if item['name'] == "우대수가":
+                c.fill = header_fill
+                c.font = Font(bold=True)
+
             for i, v in enumerate(row_vals):
                 c = ws.cell(row=current_row, column=i+2, value=v)
                 c.border = thin_border; c.alignment = center_align
@@ -653,9 +667,9 @@ def generate_excel_bytes(plans, data, summary, info):
                     else: r += 1
         current_row += 2
 
-    write_section("4. A 그룹 (정밀검사)", data['A'])
-    write_section("5. B 그룹 (특화검사)", data['B'])
-    write_section("6. C 그룹 (VIP검사)", data['C'])
+    write_section("4. A 그룹 ", data['A'])
+    write_section("5. B 그룹 ", data['B'])
+    write_section("6. C 그룹 ", data['C'])
     
     ws.row_breaks.append(Break(id=current_row))
     current_row += 1
@@ -665,6 +679,7 @@ def generate_excel_bytes(plans, data, summary, info):
     
     price_vals = []
     for p in plans:
+        # [수정] 가격 표시 로직: price_txt 우선 사용하되, 없으면 name에서 추출
         txt = p.get('price_txt', p['name'])
         nums = re.findall(r'\d+', str(txt))
         if nums:
