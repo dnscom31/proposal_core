@@ -339,13 +339,13 @@ def render_html_string(plans, data, summary, info):
                     </div>
                 </div>
                 <div style="margin-top:12px; font-style:italic; color:#666; font-size: 11px; padding-left:5px;">
-                (예시: 70만원형 기본 [A5, B1, C1] → 변경 [A1, B3, C1] 또는 [A1, B2, C2] 등 자유롭게 조합 가능)
+                * 수면 내시경의 경우 80세까지 진행 가능합니다.
                 </div>
             </div>
 
             <div class="program-grid">
                 <div class="grid-box common-box">
-                    <div class="grid-header header-common">2. 상세 검진 항목 및 그룹 구성</div>
+                    <div class="grid-header header-common">2. 상세 검진 항목 및 그룹 구성 요약</div>
                     <div class="grid-sub-header">공통 항목 <span style="font-weight:normal;">(위내시경 포함)</span></div>
                     <div class="grid-content">
                         간기능 | 간염 | 순환기계 | 당뇨 | 췌장기능 | 철결핍성 | 빈혈 | 혈액질환 | 전해질 | 신장기능 | 골격계질환<br>
@@ -358,7 +358,7 @@ def render_html_string(plans, data, summary, info):
                 <div class="grid-row">
                     <div class="grid-col" style="flex: 1.2;">
                         <div class="grid-box">
-                            <div class="grid-header header-a">A 그룹 (정밀)</div>
+                            <div class="grid-header header-a">A 그룹</div>
                             <div class="grid-content-list">
                                 <div>[01] 갑상선초음파</div> <div>[10] 골다공증QCT+비타민D</div>
                                 <div>[02] 경동맥초음파</div> <div>[11] 혈관협착도ABI</div>
@@ -374,7 +374,7 @@ def render_html_string(plans, data, summary, info):
                     </div>
                     <div class="grid-col" style="flex: 1;">
                         <div class="grid-box">
-                            <div class="grid-header header-b">B 그룹 (특화)</div>
+                            <div class="grid-header header-b">B 그룹</div>
                             <div class="grid-content-list">
                                 <div>[가] 대장수면내시경</div> <div>[마] 부정맥검사S-PATCH</div>
                                 <div>[나] 심장초음파</div> <div>[바] [혈액]알레르기검사</div>
@@ -384,7 +384,7 @@ def render_html_string(plans, data, summary, info):
                             </div>
                         </div>
                         <div class="grid-box" style="margin-top:5px; flex-grow:1;">
-                            <div class="grid-header header-c">C 그룹 (VIP)</div>
+                            <div class="grid-header header-c">C 그룹</div>
                             <div class="grid-content-list">
                                 <div>[A] 뇌MRI+MRA</div> 
                                 <div style="letter-spacing:-1.5px; white-space:nowrap;">[E] [혈액]스마트암검사(남6/여7종)</div>
@@ -408,9 +408,9 @@ def render_html_string(plans, data, summary, info):
             </div>
     """
 
-    table_a = render_table_html("4. A 그룹 (정밀검사)", data.get('A', []))
-    table_b = render_table_html("5. B 그룹 (특화검사)", data.get('B', []), footer="* A그룹 2개를 제외하고 B그룹 1개 선택 가능")
-    table_c = render_table_html("6. C 그룹 (VIP검사)", data.get('C', []), footer="* A그룹 4개를 제외하고 C그룹 1개 선택 가능")
+    table_a = render_table_html("4. A 그룹 ", data.get('A', []))
+    table_b = render_table_html("5. B 그룹 ", data.get('B', []), footer="* A그룹 2개를 제외하고 B그룹 1개 선택 가능")
+    table_c = render_table_html("6. C 그룹 ", data.get('C', []), footer="* A그룹 4개를 제외하고 C그룹 1개 선택 가능")
     
     equip_data = (data.get('EQUIP', []) or []) + (data.get('COMMON_BLOOD', []) or [])
     table_equip = render_table_html("7. 기초 장비 및 혈액 검사", equip_data, show_sub=True, merge=False)
@@ -492,8 +492,8 @@ def generate_excel_bytes(plans, data, summary, info):
         "• 유전자검사 20종 (기본제공) ⇄ A그룹 1개 로 변경 가능\n"
         "• 공단 위암 대상자 위내시경 진행 시 A그룹 추가 1가지 선택 가능\n\n"
         "[비고: MRI 정밀 장비 안내]\n"
-        "Full Protocol Scan 시행 (Spot protocol 아님) / 최신 3.0T MRI 장비 보유\n"
-        "(예시: 70만원형 기본 [A5, B1, C1] → 변경 [A1, B3, C1] 또는 [A1, B2, C2] 등 자유롭게 조합 가능)"
+        "Full Protocol Scan 시행 (진단적 가치 없는 검사는 하지 않습니다.) / 최신 3.0T MRI 장비 보유\n"
+        "수면 내시경의 경우 80세까지 진행 가능합니다."
     )
     start_r = current_row
     end_r = current_row + 6
@@ -506,7 +506,7 @@ def generate_excel_bytes(plans, data, summary, info):
     current_row += 8
 
     # 상세 항목
-    ws.cell(row=current_row, column=1, value="2. 상세 검진 항목 및 그룹 구성").font = Font(bold=True, size=12, color="2C3E50")
+    ws.cell(row=current_row, column=1, value="2. 상세 검진 항목 및 그룹 구성 요약").font = Font(bold=True, size=12, color="2C3E50")
     current_row += 1
     
     text_common = "간기능 | 간염 | 순환기계 | 당뇨 | 췌장기능 | 철결핍성 | 빈혈 | 혈액질환 | 전해질 | 신장기능 | 골격계질환\n감염성 | 갑상선기능 | 부갑상선기능 | 종양표지자 | 소변 등 80여종 혈액(소변)검사\n심전도 | 신장 | 체중 | 혈압 | 시력 | 청력 | 체성분 | 건강유형분석 | 폐기능 | 안저 | 안압\n혈액점도검사 | 유전자20종 | 흉부X-ray | 복부초음파 | 위수면내시경\n(여)자궁경부세포진 | (여)유방촬영 - #30세이상 권장#"
@@ -549,9 +549,9 @@ def generate_excel_bytes(plans, data, summary, info):
         draw_box_border(ws, b_start, current_row+3, 1, last_col)
         current_row += 4
 
-    write_group_box("A 그룹\n(정밀)", text_a, "566573", 39)
-    write_group_box("B 그룹\n(특화)", text_b, "7F8C8D", 23)
-    write_group_box("C 그룹\n(VIP)", text_c, "2C3E50", 15)
+    write_group_box("A 그룹", text_a, "566573", 39)
+    write_group_box("B 그룹", text_b, "7F8C8D", 23)
+    write_group_box("C 그룹", text_c, "2C3E50", 15)
     current_row += 1
 
     # Summary
@@ -636,9 +636,9 @@ def generate_excel_bytes(plans, data, summary, info):
                     else: r += 1
         current_row += 2
 
-    write_section("4. A 그룹 (정밀검사)", data['A'])
-    write_section("5. B 그룹 (특화검사)", data['B'])
-    write_section("6. C 그룹 (VIP검사)", data['C'])
+    write_section("4. A 그룹 ", data['A'])
+    write_section("5. B 그룹 ", data['B'])
+    write_section("6. C 그룹 ", data['C'])
     
     ws.row_breaks.append(Break(id=current_row))
     current_row += 1
@@ -652,5 +652,6 @@ def generate_excel_bytes(plans, data, summary, info):
     wb.save(output)
     output.seek(0)
     return output.getvalue()
+
 
 
