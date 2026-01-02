@@ -62,6 +62,29 @@ def load_excel_options():
     return load_price_options(str(excel_path))
 
 def main():
+
+    # ==========================================
+    # [수정] 제목 위에 '제안서 생성' 링크 버튼 추가
+    # ==========================================
+    st.markdown("""
+        <a href="https://26nkrproposal.streamlit.app/" target="_blank" style="text-decoration: none;">
+            <button style="
+                background-color: #8A2BE2; 
+                color: white; 
+                border: none; 
+                padding: 10px 20px; 
+                border-radius: 8px; 
+                font-size: 16px; 
+                font-weight: bold; 
+                cursor: pointer;
+                margin-bottom: 10px;">
+                제안서 생성
+            </button>
+        </a>
+    """, unsafe_allow_html=True)
+    # ------------------------------------------
+
+    
     # 로그인 성공 시에만 이 함수가 실행됨
     st.title("🏥 2026 기업 건강검진 견적서 생성기")
 
@@ -175,5 +198,6 @@ def main():
 if __name__ == "__main__":
     if check_password():
         main()
+
 
 
