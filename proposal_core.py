@@ -256,17 +256,47 @@ def render_html_string(plans, data, summary, info):
     body { font-family: 'Pretendard', sans-serif; background: #fff; margin: 0; padding: 20px; color: #333; font-size: 11px; }
     .page { width: 210mm; margin: 0 auto; background: white; padding: 15px 40px; box-sizing: border-box; position: relative; }
     
-    /* Cover Page CSS */
-    .cover-container { width: 100%; height: 280mm; position: relative; display: flex; flex-direction: column; justify-content: center; }
-    .cover-top-right { position: absolute; top: 0; right: 0; text-align: right; }
-    .cover-logo-text { font-size: 24px; font-weight: 900; color: #f39c12; margin-bottom: 5px; } /* Yellow placeholder */
-    .cover-hospital { font-size: 18px; font-weight: 800; color: #2c3e50; border-bottom: 3px solid #2c3e50; padding-bottom: 5px; display: inline-block; width: 250px; text-align:right;}
-    .cover-title-area { margin-top: -50px; text-align: left; }
-    .cover-company { font-size: 42px; font-weight: 900; color: #2e4a85; display: block; margin-bottom: 10px; }
-    .cover-doc-name { font-size: 42px; font-weight: 400; color: #444; }
-    .cover-bottom { position: absolute; bottom: 50px; right: 0; text-align: right; }
-    .cover-dept { font-size: 16px; color: #666; font-weight: 600; margin-bottom: 5px; }
-    .cover-mgr { font-size: 24px; font-weight: 800; color: #2e4a85; }
+    /* Cover Page CSS - Formal & Clean */
+    .cover-container { 
+        width: 100%; height: 280mm; 
+        display: flex; flex-direction: column; justify-content: space-between; 
+        padding: 40px 20px; box-sizing: border-box;
+        border: 1px solid #ddd; /* 옅은 테두리로 문서의 격을 높임 */
+    }
+    
+    .cover-top { 
+        text-align: right; border-bottom: 2px solid #1a253a; padding-bottom: 10px; margin-bottom: 20px; 
+    }
+    .cover-top-title { font-size: 14px; font-weight: bold; color: #555; letter-spacing: 1px; }
+    .cover-top-date { font-size: 12px; color: #7f8c8d; margin-top: 5px; }
+
+    .cover-middle { 
+        text-align: center; margin-top: 60px; margin-bottom: 60px;
+    }
+    .cover-main-title { 
+        font-size: 26px; font-weight: bold; color: #333; letter-spacing: 2px; margin-bottom: 40px; 
+    }
+    .cover-client-name { 
+        font-size: 42px; font-weight: 900; color: #1a253a; line-height: 1.3; 
+        border-bottom: 1px solid #ccc; display: inline-block; padding-bottom: 10px; margin-bottom: 10px;
+    }
+    .cover-honorific { 
+        font-size: 24px; font-weight: 500; color: #555; margin-left: 10px; 
+    }
+
+    .cover-bottom { 
+        text-align: center; margin-bottom: 30px; 
+    }
+    .cover-submit-box {
+        display: inline-block;
+        text-align: left;
+        border-top: 2px solid #1a253a;
+        padding-top: 20px;
+        margin-top: 50px;
+    }
+    .cover-submit-row { margin-bottom: 12px; font-size: 15px; }
+    .cover-submit-label { display: inline-block; width: 80px; font-weight: bold; color: #555; }
+    .cover-submit-val { font-weight: bold; color: #1a253a; font-size: 16px; }
 
     /* Existing CSS */
     .hospital-brand { font-size: 26px; font-weight: 900; color: #1a253a; letter-spacing: -1px; }
@@ -316,23 +346,38 @@ def render_html_string(plans, data, summary, info):
     <body>
     """
 
-    # [수정됨] 표지 HTML 생성
+    # [수정됨] 표지 HTML 생성 - 포멀한 스타일
     cover_html = f"""
         <div class="page">
             <div class="cover-container">
-                <div class="cover-top-right">
-                    <div class="cover-logo-text">☀️</div>
-                    <div class="cover-hospital">2026 뉴고려병원</div>
+                <div class="cover-top">
+                    <div class="cover-top-title">2026 기업 임직원 건강검진 제안서</div>
+                    <div class="cover-top-date">{datetime.now().strftime('%Y-%m-%d')}</div>
                 </div>
                 
-                <div class="cover-title-area">
-                    <span class="cover-company">{company}</span>
-                    <span class="cover-doc-name">건강검진 견적서</span>
+                <div class="cover-middle">
+                    <div class="cover-main-title">HEALTH CHECK-UP PROPOSAL</div>
+                    <div>
+                        <span class="cover-client-name">{company}</span>
+                        <span class="cover-honorific">귀중</span>
+                    </div>
                 </div>
 
                 <div class="cover-bottom">
-                    <div class="cover-dept">검진사업부</div>
-                    <div class="cover-mgr">{manager} 팀장</div>
+                    <div class="cover-submit-box">
+                        <div class="cover-submit-row">
+                            <span class="cover-submit-label">제 출 처</span>
+                            <span class="cover-submit-val">뉴고려병원 검진사업부</span>
+                        </div>
+                        <div class="cover-submit-row">
+                            <span class="cover-submit-label">담 당 자</span>
+                            <span class="cover-submit-val">{manager} 팀장</span>
+                        </div>
+                        <div class="cover-submit-row">
+                            <span class="cover-submit-label">문 의</span>
+                            <span class="cover-submit-val">{info.get('phone','')}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -481,7 +526,6 @@ def render_html_string(plans, data, summary, info):
     </html>
     """
     
-    # 순서: Head -> Cover(새로추가) -> Page1_Content(Header~Footer)
     return head + cover_html + header_content + guide_content + summary_content + table_a + table_b + table_c + table_equip + footer
 
 def generate_excel_bytes(plans, data, summary, info):
@@ -493,44 +537,63 @@ def generate_excel_bytes(plans, data, summary, info):
     wb = openpyxl.Workbook()
     
     # ----------------------------------------------------
-    # [수정됨] 1. 표지 시트 생성 (맨 앞)
+    # [수정됨] 1. 표지 시트 생성 - 공문서 스타일 (Formal)
     # ----------------------------------------------------
     ws_cover = wb.active
     ws_cover.title = "표지"
     ws_cover.page_setup.paperSize = 9  # A4
+    ws_cover.print_options.horizontalCentered = True
+    ws_cover.print_options.verticalCentered = True
     
-    # 1-1. 우측 상단 로고/병원명
-    ws_cover['E5'] = "2026 뉴고려병원"
-    ws_cover['E5'].font = Font(size=14, bold=True, color="2C3E50")
-    ws_cover['E5'].alignment = Alignment(horizontal='right')
-    ws_cover['E5'].border = Border(bottom=Side(style='thick', color="2C3E50"))
-    ws_cover.merge_cells("E5:H5")
-
-    # 1-2. 중앙 타이틀 (기업명 + 건강검진 견적서)
-    ws_cover['B18'] = company
-    ws_cover['B18'].font = Font(size=36, bold=True, color="1F4E79") # 짙은 파랑
-    ws_cover['B18'].alignment = Alignment(horizontal='center', vertical='center')
-    ws_cover.merge_cells("B18:H18")
+    # 테두리 스타일
+    thick_bottom = Border(bottom=Side(style='thick', color="1A253A"))
     
-    ws_cover['B19'] = "건강검진 견적서"
-    ws_cover['B19'].font = Font(size=36, bold=False, color="333333")
-    ws_cover['B19'].alignment = Alignment(horizontal='center', vertical='center')
-    ws_cover.merge_cells("B19:H19")
+    # 1-1. 상단 (날짜/문서번호 등)
+    ws_cover['E3'] = f"Date: {datetime.now().strftime('%Y-%m-%d')}"
+    ws_cover['E3'].font = Font(size=11, color="555555")
+    ws_cover['E3'].alignment = Alignment(horizontal='right')
+    ws_cover.merge_cells("E3:H3")
 
-    # 1-3. 우측 하단 담당자
-    ws_cover['E35'] = "검진사업부"
-    ws_cover['E35'].font = Font(size=12, bold=True, color="7F8C8D")
-    ws_cover['E35'].alignment = Alignment(horizontal='right')
-    ws_cover.merge_cells("E35:H35")
+    # 1-2. 중앙 타이틀 (귀중 포함)
+    # 제목
+    ws_cover['B15'] = "2026 임직원 건강검진 제안서"
+    ws_cover['B15'].font = Font(size=20, bold=True, color="333333")
+    ws_cover['B15'].alignment = Alignment(horizontal='center', vertical='center')
+    ws_cover.merge_cells("B15:H15")
+    
+    # 수신처 (가장 크게)
+    ws_cover['B17'] = f"{company} 귀중"
+    ws_cover['B17'].font = Font(size=36, bold=True, color="1A253A") # 아주 진한 네이비
+    ws_cover['B17'].alignment = Alignment(horizontal='center', vertical='center')
+    ws_cover['B17'].border = thick_bottom # 하단 강조선
+    ws_cover.merge_cells("B17:H17")
 
-    ws_cover['E36'] = f"{manager_name} 팀장"
-    ws_cover['E36'].font = Font(size=16, bold=True, color="1F4E79")
-    ws_cover['E36'].alignment = Alignment(horizontal='right')
-    ws_cover.merge_cells("E36:H36")
+    # 1-3. 하단 (발신처)
+    # 발신처 레이블과 내용 분리하여 정렬
+    start_row = 32
+    
+    # 병원명
+    ws_cover[f'E{start_row}'] = "뉴고려병원 검진사업부"
+    ws_cover[f'E{start_row}'].font = Font(size=14, bold=True, color="1A253A")
+    ws_cover[f'E{start_row}'].alignment = Alignment(horizontal='left')
+    ws_cover.merge_cells(f"E{start_row}:H{start_row}")
+    
+    # 담당자
+    ws_cover[f'E{start_row+1}'] = f"담당자: {manager_name} 팀장"
+    ws_cover[f'E{start_row+1}'].font = Font(size=12, color="333333")
+    ws_cover[f'E{start_row+1}'].alignment = Alignment(horizontal='left')
+    ws_cover.merge_cells(f"E{start_row+1}:H{start_row+1}")
 
-    # 표지 행 높이 조절 (여백 확보)
+    # 연락처
+    ws_cover[f'E{start_row+2}'] = f"T. {info.get('phone','')} / E. {info.get('email','')}"
+    ws_cover[f'E{start_row+2}'].font = Font(size=11, color="555555")
+    ws_cover[f'E{start_row+2}'].alignment = Alignment(horizontal='left')
+    ws_cover.merge_cells(f"E{start_row+2}:H{start_row+2}")
+
+    # 행 높이 조절
     for r in range(1, 45):
         ws_cover.row_dimensions[r].height = 20
+    ws_cover.row_dimensions[17].height = 60 # 회사명 부분 높게
 
     # ----------------------------------------------------
     # 2. 견적서 상세 시트 생성
