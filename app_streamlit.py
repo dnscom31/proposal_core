@@ -78,7 +78,7 @@ def main():
                 font-weight: bold; 
                 cursor: pointer;
                 margin-bottom: 10px;">
-                제안서 생성
+                제안서 생성 링크 버튼
             </button>
         </a>
     """, unsafe_allow_html=True)
@@ -198,6 +198,7 @@ def main():
 if __name__ == "__main__":
     if check_password():
         main()
+
 
 
 
