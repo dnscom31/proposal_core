@@ -128,14 +128,7 @@ def parse_data_from_excel(excel_path, header_row, plans):
             if col_idx < len(row):
                 val = str(row[col_idx]).strip() if row[col_idx] else ""
 
-            # [수정됨] 유전자 검사 항목(2-1~2-4) 30만원 이상 구간 '선택1' 강제 적용 로직
-            # 엑셀의 항목명에 '2-'와 '유전자'가 모두 포함되어 있으면 대상으로 인식
-            if "2-" in item_name and "유전자" in item_name:
-                plan_price = plan.get('sort_key', 0)
-                # 30만원 이상인 경우 무조건 '선택1'로 설정
-                if plan_price >= 30:
-                    val = "선택1"
-
+            # 일반 그룹 규칙 적용 (유전자는 아래에서 별도 처리하므로 여기서 cache 로직은 통과)
             if current_main_cat in ["A", "B", "C"]:
                 cache = fill_cache[idx]
                 if "선택" in val: cache[current_main_cat] = val
@@ -152,6 +145,46 @@ def parse_data_from_excel(excel_path, header_row, plans):
 
             if "미선택" in val: val = ""
             row_vals.append(val)
+
+        # ---------------------------------------------------------
+        # [수정됨] 유전자 항목 자동 분할 및 선택1 강제 적용 로직
+        # ---------------------------------------------------------
+        # 엑셀의 "유전자"와 "20종"이 포함된 행을 찾음 (예: '2 유전자 20종')
+        if "유전자" in item_name and "20종" in item_name:
+            # 1. 분할하여 표시할 4가지 항목 이름 정의
+            split_items = [
+                "2-1 유전자20종(암&중증질병)",
+                "2-2 유전자19/20종(멘탈&이너)",
+                "2-3 유전자 16종(면역)",
+                "2-4 유전자 20종 (라이프)"
+            ]
+            
+            # 2. 4개 항목을 각각 생성
+            for sub_name in split_items:
+                new_vals = []
+                for idx, plan in enumerate(plans):
+                    plan_price = plan.get('sort_key', 0)
+                    
+                    # [핵심 수정] 30만원 이상이면 무조건 '선택1'로 표시
+                    if plan_price >= 30:
+                        new_vals.append("선택1")
+                    else:
+                        # 30만원 미만이면 엑셀의 원래 값(X, - 등)을 그대로 유지
+                        # 단, 엑셀 원본이 'O'였다면 그대로 'O'가 들어감
+                        origin_val = row_vals[idx] if idx < len(row_vals) else ""
+                        new_vals.append(origin_val)
+                
+                # 새로운 항목 생성
+                new_entry = {"category": sub_cat, "name": sub_name, "desc": item_desc, "values": new_vals}
+                
+                # 데이터 리스트에 추가 (A그룹으로 가정)
+                if current_main_cat == "A": parsed_data["A"].append(new_entry)
+                elif current_main_cat == "B": parsed_data["B"].append(new_entry)
+                elif current_main_cat == "C": parsed_data["C"].append(new_entry)
+            
+            # 원래 있던 "2 유전자 20종" 행은 추가하지 않고 건너뜀
+            continue
+        # ---------------------------------------------------------
 
         entry = {"category": sub_cat, "name": item_name, "desc": item_desc, "values": row_vals}
         
@@ -263,49 +296,27 @@ def render_html_string(plans, data, summary, info):
     body { font-family: 'Pretendard', sans-serif; background: #fff; margin: 0; padding: 20px; color: #333; font-size: 11px; }
     .page { width: 210mm; margin: 0 auto; background: white; padding: 15px 40px; box-sizing: border-box; position: relative; }
     
-    /* Cover Page CSS - Formal & Clean */
+    /* Cover Page CSS */
     .cover-container { 
         width: 100%; height: 280mm; 
         display: flex; flex-direction: column; justify-content: space-between; 
         padding: 40px 20px; box-sizing: border-box;
-        border: 1px solid #ddd; /* 옅은 테두리로 문서의 격을 높임 */
+        border: 1px solid #ddd;
     }
-    
-    .cover-top { 
-        text-align: right; border-bottom: 2px solid #1a253a; padding-bottom: 10px; margin-bottom: 20px; 
-    }
+    .cover-top { text-align: right; border-bottom: 2px solid #1a253a; padding-bottom: 10px; margin-bottom: 20px; }
     .cover-top-title { font-size: 14px; font-weight: bold; color: #555; letter-spacing: 1px; }
     .cover-top-date { font-size: 12px; color: #7f8c8d; margin-top: 5px; }
-
-    .cover-middle { 
-        text-align: center; margin-top: 60px; margin-bottom: 60px;
-    }
-    .cover-main-title { 
-        font-size: 26px; font-weight: bold; color: #333; letter-spacing: 2px; margin-bottom: 40px; 
-    }
-    .cover-client-name { 
-        font-size: 42px; font-weight: 900; color: #1a253a; line-height: 1.3; 
-        border-bottom: 1px solid #ccc; display: inline-block; padding-bottom: 10px; margin-bottom: 10px;
-    }
-    .cover-honorific { 
-        font-size: 24px; font-weight: 500; color: #555; margin-left: 10px; 
-    }
-
-    .cover-bottom { 
-        text-align: center; margin-bottom: 30px; 
-    }
-    .cover-submit-box {
-        display: inline-block;
-        text-align: left;
-        border-top: 2px solid #1a253a;
-        padding-top: 20px;
-        margin-top: 50px;
-    }
+    .cover-middle { text-align: center; margin-top: 60px; margin-bottom: 60px; }
+    .cover-main-title { font-size: 26px; font-weight: bold; color: #333; letter-spacing: 2px; margin-bottom: 40px; }
+    .cover-client-name { font-size: 42px; font-weight: 900; color: #1a253a; line-height: 1.3; border-bottom: 1px solid #ccc; display: inline-block; padding-bottom: 10px; margin-bottom: 10px; }
+    .cover-honorific { font-size: 24px; font-weight: 500; color: #555; margin-left: 10px; }
+    .cover-bottom { text-align: center; margin-bottom: 30px; }
+    .cover-submit-box { display: inline-block; text-align: left; border-top: 2px solid #1a253a; padding-top: 20px; margin-top: 50px; }
     .cover-submit-row { margin-bottom: 12px; font-size: 15px; }
     .cover-submit-label { display: inline-block; width: 80px; font-weight: bold; color: #555; }
     .cover-submit-val { font-weight: bold; color: #1a253a; font-size: 16px; }
 
-    /* Existing CSS */
+    /* Content CSS */
     .hospital-brand { font-size: 26px; font-weight: 900; color: #1a253a; letter-spacing: -1px; }
     .hospital-sub { font-size: 16px; color: #555; margin-top: 5px; font-weight: bold; }
     .contact-card { background-color: #f8f9fa; border: 2px solid #2c3e50; border-radius: 8px; padding: 10px 15px; text-align: right; box-shadow: 2px 2px 8px rgba(0,0,0,0.05); min-width: 200px; float: right; }
@@ -353,7 +364,6 @@ def render_html_string(plans, data, summary, info):
     <body>
     """
 
-    # [수정됨] 표지 HTML 생성 - 포멀한 스타일
     cover_html = f"""
         <div class="page">
             <div class="cover-container">
@@ -361,7 +371,6 @@ def render_html_string(plans, data, summary, info):
                     <div class="cover-top-title">2026 기업 임직원 건강검진 제안서</div>
                     <div class="cover-top-date">{datetime.now().strftime('%Y-%m-%d')}</div>
                 </div>
-                
                 <div class="cover-middle">
                     <div class="cover-main-title">HEALTH CHECK-UP PROPOSAL</div>
                     <div>
@@ -369,7 +378,6 @@ def render_html_string(plans, data, summary, info):
                         <span class="cover-honorific">귀중</span>
                     </div>
                 </div>
-
                 <div class="cover-bottom">
                     <div class="cover-submit-box">
                         <div class="cover-submit-row">
@@ -409,7 +417,14 @@ def render_html_string(plans, data, summary, info):
             <div class="header-divider"></div>
     """
 
-    guide_content = """
+    # [수정됨] C그룹 텍스트에서 '에피클락' 제거
+    text_common = "간기능 | 간염 | 순환기계 | 당뇨 | 췌장기능 | 철결핍성 | 빈혈 | 혈액질환 | 전해질 | 신장기능 | 골격계질환<br>감염성 | 갑상선기능 | 부갑상선기능 | 종양표지자 | 소변 등 80여종 혈액(소변)검사<br>심전도 | 신장 | 체중 | 혈압 | 시력 | 청력 | 체성분 | 건강유형분석 | 폐기능 | 안저 | 안압<br>혈액점도검사 | 유전자20종 | 흉부X-ray | 복부초음파 | 위수면내시경<br>(여)자궁경부세포진 | (여)유방촬영 - #30세이상 권장#"
+    text_a = "[01] 갑상선초음파  [10] 골다공증QCT+비타민D\n[02] 경동맥초음파  [11] 혈관협착도ABI\n[03] (여)경질초음파  [12] (여)액상 자궁경부세포진\n[04] 뇌CT  [13] (여) HPV바이러스\n[05] 폐CT  [14] (여)(혈액)마스토체크:유방암\n[06] 요추CT  [15] (혈액)NK뷰키트\n[07] 경추CT  [16] (여)(혈액)여성호르몬\n[08] 심장MDCT  [17] (남)(혈액)남성호르몬\n[09] 복부비만CT"
+    text_b = "[가] 대장수면내시경  [마] 부정맥검사S-PATCH\n[나] 심장초음파  [바] [혈액]알레르기검사\n[다] (여)유방초음파  [사] [혈액]알츠온:치매위험도\n[라] [분변]대장암_얼리텍  [아] [혈액]간섬유화검사\n[자] 폐렴예방접종:15가"
+    # [수정] 에피클락 삭제됨
+    text_c = "[A] 뇌MRI+MRA  [E] [혈액]스마트암검사(남6/여7종)\n[B] 췌장MRI  [F] [혈액]선천적 유전자검사\n[C] 경추MRI\n[D] 요추MRI"
+
+    guide_content = f"""
             <div class="guide-box">
                 <span class="guide-title">1. 유동적 그룹 선택 시스템 (Flexible Option)</span>
                 <div style="display:flex; justify-content:space-between; align-items: flex-start; gap: 20px;">
@@ -481,7 +496,7 @@ def render_html_string(plans, data, summary, info):
                                 <div>[A] 뇌MRI+MRA</div> 
                                 <div style="letter-spacing:-1.5px; white-space:nowrap;">[E] [혈액]스마트암검사(남6/여7종)</div>
                                 <div>[B] 췌장MRI</div> <div>[F] [혈액]선천적 유전자검사</div>
-                                <div>[C] 경추MRI</div> <div>[G] [혈액]에피클락 (생체나이)</div>
+                                <div>[C] 경추MRI</div> <div></div>
                                 <div>[D] 요추MRI</div>
                             </div>
                         </div>
@@ -544,7 +559,7 @@ def generate_excel_bytes(plans, data, summary, info):
     wb = openpyxl.Workbook()
     
     # ----------------------------------------------------
-    # [수정됨] 1. 표지 시트 생성 - 공문서 스타일 (Formal)
+    # 1. 표지 시트 생성 - 공문서 스타일
     # ----------------------------------------------------
     ws_cover = wb.active
     ws_cover.title = "표지"
@@ -552,55 +567,44 @@ def generate_excel_bytes(plans, data, summary, info):
     ws_cover.print_options.horizontalCentered = True
     ws_cover.print_options.verticalCentered = True
     
-    # 테두리 스타일
     thick_bottom = Border(bottom=Side(style='thick', color="1A253A"))
     
-    # 1-1. 상단 (날짜/문서번호 등)
     ws_cover['E3'] = f"Date: {datetime.now().strftime('%Y-%m-%d')}"
     ws_cover['E3'].font = Font(size=11, color="555555")
     ws_cover['E3'].alignment = Alignment(horizontal='right')
     ws_cover.merge_cells("E3:H3")
 
-    # 1-2. 중앙 타이틀 (귀중 포함)
-    # 제목
     ws_cover['B15'] = "2026 임직원 건강검진 제안서"
     ws_cover['B15'].font = Font(size=20, bold=True, color="333333")
     ws_cover['B15'].alignment = Alignment(horizontal='center', vertical='center')
     ws_cover.merge_cells("B15:H15")
     
-    # 수신처 (가장 크게)
     ws_cover['B17'] = f"{company} 귀중"
-    ws_cover['B17'].font = Font(size=36, bold=True, color="1A253A") # 아주 진한 네이비
+    ws_cover['B17'].font = Font(size=36, bold=True, color="1A253A")
     ws_cover['B17'].alignment = Alignment(horizontal='center', vertical='center')
-    ws_cover['B17'].border = thick_bottom # 하단 강조선
+    ws_cover['B17'].border = thick_bottom
     ws_cover.merge_cells("B17:H17")
 
-    # 1-3. 하단 (발신처)
-    # 발신처 레이블과 내용 분리하여 정렬
     start_row = 32
     
-    # 병원명
     ws_cover[f'E{start_row}'] = "뉴고려병원 검진사업부"
     ws_cover[f'E{start_row}'].font = Font(size=14, bold=True, color="1A253A")
     ws_cover[f'E{start_row}'].alignment = Alignment(horizontal='left')
     ws_cover.merge_cells(f"E{start_row}:H{start_row}")
     
-    # 담당자
     ws_cover[f'E{start_row+1}'] = f"담당자: {manager_name} 팀장"
     ws_cover[f'E{start_row+1}'].font = Font(size=12, color="333333")
     ws_cover[f'E{start_row+1}'].alignment = Alignment(horizontal='left')
     ws_cover.merge_cells(f"E{start_row+1}:H{start_row+1}")
 
-    # 연락처
     ws_cover[f'E{start_row+2}'] = f"T. {info.get('phone','')} / E. {info.get('email','')}"
     ws_cover[f'E{start_row+2}'].font = Font(size=11, color="555555")
     ws_cover[f'E{start_row+2}'].alignment = Alignment(horizontal='left')
     ws_cover.merge_cells(f"E{start_row+2}:H{start_row+2}")
 
-    # 행 높이 조절
     for r in range(1, 45):
         ws_cover.row_dimensions[r].height = 20
-    ws_cover.row_dimensions[17].height = 60 # 회사명 부분 높게
+    ws_cover.row_dimensions[17].height = 60
 
     # ----------------------------------------------------
     # 2. 견적서 상세 시트 생성
@@ -681,10 +685,11 @@ def generate_excel_bytes(plans, data, summary, info):
     ws.cell(row=current_row, column=1, value="2. 상세 검진 항목 및 그룹 구성 요약").font = Font(bold=True, size=12, color="2C3E50")
     current_row += 1
     
+    # [수정됨] C그룹 텍스트 수정 반영 (에피클락 삭제)
     text_common = "간기능 | 간염 | 순환기계 | 당뇨 | 췌장기능 | 철결핍성 | 빈혈 | 혈액질환 | 전해질 | 신장기능 | 골격계질환\n감염성 | 갑상선기능 | 부갑상선기능 | 종양표지자 | 소변 등 80여종 혈액(소변)검사\n심전도 | 신장 | 체중 | 혈압 | 시력 | 청력 | 체성분 | 건강유형분석 | 폐기능 | 안저 | 안압\n혈액점도검사 | 유전자20종 | 흉부X-ray | 복부초음파 | 위수면내시경\n(여)자궁경부세포진 | (여)유방촬영 - #30세이상 권장#"
     text_a = "[01] 갑상선초음파  [10] 골다공증QCT+비타민D\n[02] 경동맥초음파  [11] 혈관협착도ABI\n[03] (여)경질초음파  [12] (여)액상 자궁경부세포진\n[04] 뇌CT  [13] (여) HPV바이러스\n[05] 폐CT  [14] (여)(혈액)마스토체크:유방암\n[06] 요추CT  [15] (혈액)NK뷰키트\n[07] 경추CT  [16] (여)(혈액)여성호르몬\n[08] 심장MDCT  [17] (남)(혈액)남성호르몬\n[09] 복부비만CT"
     text_b = "[가] 대장수면내시경  [마] 부정맥검사S-PATCH\n[나] 심장초음파  [바] [혈액]알레르기검사\n[다] (여)유방초음파  [사] [혈액]알츠온:치매위험도\n[라] [분변]대장암_얼리텍  [아] [혈액]간섬유화검사\n[자] 폐렴예방접종:15가"
-    text_c = "[A] 뇌MRI+MRA  [E] [혈액]스마트암검사(남6/여7종)\n[B] 췌장MRI  [F] [혈액]선천적 유전자검사\n[C] 경추MRI  [G] [혈액]에피클락 (생체나이)\n[D] 요추MRI"
+    text_c = "[A] 뇌MRI+MRA  [E] [혈액]스마트암검사(남6/여7종)\n[B] 췌장MRI  [F] [혈액]선천적 유전자검사\n[C] 경추MRI\n[D] 요추MRI"
 
     box_start_row = current_row
     ws.cell(row=current_row, column=1, value="공통 항목 (위내시경 포함)").font = Font(bold=True, color="FFFFFF")
