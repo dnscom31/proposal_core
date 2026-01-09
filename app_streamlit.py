@@ -1,55 +1,71 @@
 # app_streamlit.py
 import streamlit as st
-import os
 from pathlib import Path
-# (주의) proposal_core.py 파일이 같은 폴더에 있어야 합니다.
+# (주의) proposal_core 모듈이 같은 폴더에 있어야 합니다.
 from proposal_core import load_price_options, parse_data_from_excel, render_html_string, generate_excel_bytes
 
-# 기본으로 사용할 파일명 (업로드 안 했을 때 사용)
-DEFAULT_EXCEL_FILENAME = "2025 건강검진 견적서_표준.xlsx"
+EXCEL_FILENAME = "2025 건강검진 견적서_표준.xlsx"
 
-# 1. 페이지 설정 (가장 먼저 실행)
+# 1. 페이지 설정 (가장 먼저 실행되어야 함)
 st.set_page_config(page_title="2026 기업건강검진 견적서 생성기", layout="wide")
 
 # ==========================================
-# 비밀번호 확인 함수
+# [추가됨] 비밀번호 확인 함수
 # ==========================================
 def check_password():
     """비밀번호가 맞으면 True, 아니면 False를 반환하고 입력창을 띄움"""
     
     def password_entered():
+        """입력된 비밀번호가 시크릿과 일치하는지 확인"""
         if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
             st.session_state["password_correct"] = True
+            # 보안을 위해 세션에 저장된 비밀번호 텍스트 삭제
             del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
+    # 1. 세션에 인증 정보가 없으면 초기화
     if "password_correct" not in st.session_state:
-        st.text_input("비밀번호를 입력하세요", type="password", on_change=password_entered, key="password")
+        # 처음 접속 시 입력창 표시
+        st.text_input(
+            "비밀번호를 입력하세요", 
+            type="password", 
+            on_change=password_entered, 
+            key="password"
+        )
         return False
+    
+    # 2. 비밀번호가 틀렸을 경우
     elif not st.session_state["password_correct"]:
-        st.text_input("비밀번호를 입력하세요", type="password", on_change=password_entered, key="password")
+        st.text_input(
+            "비밀번호를 입력하세요", 
+            type="password", 
+            on_change=password_entered, 
+            key="password"
+        )
         st.error("😕 비밀번호가 틀렸습니다. 다시 입력해주세요.")
         return False
+    
+    # 3. 비밀번호가 맞을 경우
     else:
         return True
 
 # ==========================================
-# 데이터 로드 함수 (캐시 적용)
+# 기존 로직
 # ==========================================
+
 @st.cache_data
-def load_excel_options(file_path_str):
-    """경로를 인자로 받아 데이터를 로드 (파일이 바뀌면 캐시 갱신)"""
-    excel_path = Path(file_path_str)
+def load_excel_options():
+    excel_path = Path(EXCEL_FILENAME)
     if not excel_path.exists():
         return None, None
     return load_price_options(str(excel_path))
 
-# ==========================================
-# 메인 함수
-# ==========================================
 def main():
-    # [병원소개서 링크 버튼]
+
+    # ==========================================
+    # [수정] 제목 위에 '제안서 생성' 링크 버튼 추가
+    # ==========================================
     st.markdown("""
         <a href="https://26nkrproposal.streamlit.app/" target="_blank" style="text-decoration: none;">
             <button style="
@@ -66,61 +82,33 @@ def main():
             </button>
         </a>
     """, unsafe_allow_html=True)
+    # ------------------------------------------
 
+    
+    # 로그인 성공 시에만 이 함수가 실행됨
     st.title("🏥 2026 기업 건강검진 견적서 생성기")
 
-    # -----------------------------------------------------------
-    # [기능 추가] 사이드바: 파일 업로드 및 설정
-    # -----------------------------------------------------------
+    # 1. 엑셀 로드
+    header_row, options = load_excel_options()
+    if not header_row:
+        st.error(f"'{EXCEL_FILENAME}' 파일을 찾을 수 없거나 헤더를 읽을 수 없습니다.")
+        st.stop()
+
+    # 2. 사이드바: 입력 및 선택
     with st.sidebar:
-        st.header("📂 엑셀 파일 설정")
-        
-        # 1. 파일 업로더
-        uploaded_file = st.file_uploader("수정된 견적서 엑셀 파일 업로드", type=['xlsx'])
-        
-        # 파일 경로 결정 로직
-        if uploaded_file is not None:
-            # 업로드된 파일을 임시 파일로 저장
-            target_file_path = "temp_uploaded_excel.xlsx"
-            with open(target_file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            st.success("✅ 업로드된 파일이 적용되었습니다.")
-        else:
-            # 업로드가 없으면 기본 파일 사용
-            target_file_path = DEFAULT_EXCEL_FILENAME
-            st.info(f"기본 파일 사용 중: {DEFAULT_EXCEL_FILENAME}")
-
-        st.divider()
-
         st.header("1. 기본 정보 입력")
         company = st.text_input("기업명 (고객사)", placeholder="예: (주)테슬라")
         mgr_name = st.text_input("담당자명", value="담당자")
         mgr_phone = st.text_input("연락처", placeholder="010-0000-0000")
         mgr_email = st.text_input("이메일")
         
-        # -------------------------------------------------------
-        # 엑셀 로드 (위에서 결정된 target_file_path 사용)
-        # -------------------------------------------------------
-        header_row, options = load_excel_options(target_file_path)
-        
-        if not header_row:
-            st.error(f"❌ 파일을 읽을 수 없습니다. 경로: {target_file_path}")
-            # 업로드된 파일이 없고 기본 파일도 없는 경우 중단
-            if uploaded_file is None and not Path(DEFAULT_EXCEL_FILENAME).exists():
-                st.warning("기본 엑셀 파일이 없습니다. 파일을 업로드해주세요.")
-                st.stop()
-        
         st.divider()
         st.header("2. 금액대 선택")
         selected_prices = []
-        
-        # 로드된 옵션으로 체크박스 생성
         if options:
             for opt in options:
                 if st.checkbox(f"{opt['price_txt']}", key=f"chk_{opt['price_txt']}"):
                     selected_prices.append(opt)
-        else:
-            st.warning("엑셀에서 금액 정보를 찾을 수 없습니다.")
 
     # 3. 메인 영역: 플랜 상세 설정
     if not selected_prices:
@@ -142,11 +130,12 @@ def main():
             with cols[0]:
                 cnt = st.number_input(f"{price_txt} 개수", min_value=1, max_value=3, value=1, key=f"cnt_{price_txt}")
             
+            # N개의 플랜 입력 폼 생성
             for i in range(int(cnt)):
                 st.markdown(f"**Option {i+1}**")
                 c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
                 
-                # 기본값 계산
+                # 기본값 계산 로직
                 def_name = f"{price_txt}"
                 def_a, def_b, def_c = base_a, base_b, base_c
                 
@@ -176,18 +165,17 @@ def main():
                     "name": p_name,
                     "col_idx": opt['col_idx'],
                     "a_rule": p_a, "b_rule": p_b, "c_rule": p_c,
+                    # [수정됨] 플랜명이 바뀌어도 원래 가격 정보(예: 30만원)를 알 수 있도록 추가
                     "price_txt": opt['price_txt']
                 })
 
     st.divider()
 
-    # 4. 생성 및 다운로드
+    # 4. 생성 및 다운로드 (이후 코드는 동일)
     if st.button("견적서 생성하기 (HTML 미리보기 & 엑셀 생성)", type="primary"):
         with st.spinner("데이터 처리 중..."):
             info = {"company": company, "name": mgr_name, "phone": mgr_phone, "email": mgr_email}
-            
-            # [중요] 결정된 경로(target_file_path)를 사용하여 데이터 파싱
-            data, summary = parse_data_from_excel(str(Path(target_file_path).resolve()), header_row, final_plans)
+            data, summary = parse_data_from_excel(str(Path(EXCEL_FILENAME).resolve()), header_row, final_plans)
             
             html_str = render_html_string(final_plans, data, summary, info)
             excel_bytes = generate_excel_bytes(final_plans, data, summary, info)
@@ -210,3 +198,7 @@ def main():
 if __name__ == "__main__":
     if check_password():
         main()
+
+
+
+
