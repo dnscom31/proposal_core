@@ -1,4 +1,3 @@
-# proposal_core.py
 import io
 import re
 from datetime import datetime
@@ -128,6 +127,14 @@ def parse_data_from_excel(excel_path, header_row, plans):
             val = ""
             if col_idx < len(row):
                 val = str(row[col_idx]).strip() if row[col_idx] else ""
+
+            # [수정됨] 유전자 검사 항목(2-1~2-4) 30만원 이상 구간 '선택1' 강제 적용 로직
+            # 엑셀의 항목명에 '2-'와 '유전자'가 모두 포함되어 있으면 대상으로 인식
+            if "2-" in item_name and "유전자" in item_name:
+                plan_price = plan.get('sort_key', 0)
+                # 30만원 이상인 경우 무조건 '선택1'로 설정
+                if plan_price >= 30:
+                    val = "선택1"
 
             if current_main_cat in ["A", "B", "C"]:
                 cache = fill_cache[idx]
