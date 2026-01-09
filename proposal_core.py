@@ -103,6 +103,14 @@ def parse_data_from_excel(excel_path, header_row, plans):
     fill_cache = {i: {"A": None, "B": None, "C": None} for i in range(len(plans))}
     current_main_cat = ""
 
+    # [수정됨] 정확한 매칭을 위한 타겟 리스트 정의
+    target_gene_items = [
+        "2-1 유전자20종(암&중증질병)",
+        "2-2 유전자19/20종(멘탈&이너)",
+        "2-3 유전자 16종(면역)",
+        "2-4 유전자 20종 (라이프)"
+    ]
+
     for row in sheet.iter_rows(min_row=header_row + 1, values_only=True):
         if not row or len(row) < 2: continue
         col0 = str(row[0]).strip() if row[0] else ""
@@ -121,6 +129,17 @@ def parse_data_from_excel(excel_path, header_row, plans):
         item_desc = str(row[2]).strip() if row[2] else ""
         sub_cat = col0 if current_main_cat == "EQUIP" and col0 else ""
 
+        # [수정됨] 에피클락 제거 로직
+        if "에피클락" in item_name:
+            continue
+
+        # [수정됨] 유전자 검사 항목 여부 확인 (문자열 포함 여부로 유연하게 체크)
+        is_target_gene = any(t.replace(" ", "") in item_name.replace(" ", "") for t in target_gene_items)
+        
+        # 만약 정확한 이름이 일치하지 않을 수 있으니, "2-"로 시작하고 "유전자"가 포함된 경우도 체크
+        if not is_target_gene and "유전자" in item_name and any(x in item_name for x in ["2-1", "2-2", "2-3", "2-4"]):
+            is_target_gene = True
+
         row_vals = []
         for idx, plan in enumerate(plans):
             col_idx = plan["col_idx"] - 1
@@ -128,63 +147,30 @@ def parse_data_from_excel(excel_path, header_row, plans):
             if col_idx < len(row):
                 val = str(row[col_idx]).strip() if row[col_idx] else ""
 
-            # 일반 그룹 규칙 적용 (유전자는 아래에서 별도 처리하므로 여기서 cache 로직은 통과)
-            if current_main_cat in ["A", "B", "C"]:
-                cache = fill_cache[idx]
-                if "선택" in val: cache[current_main_cat] = val
-                elif val == "" and cache[current_main_cat]: val = cache[current_main_cat]
-                elif val != "": cache[current_main_cat] = None
-                
-                if "선택" in val:
-                    rule = ""
-                    if current_main_cat == "A": rule = plan.get('a_rule', '')
-                    elif current_main_cat == "B": rule = plan.get('b_rule', '')
-                    elif current_main_cat == "C": rule = plan.get('c_rule', '')
-                    if rule:
-                        val = "" if rule == "-" else rule
+            # [수정됨] 유전자 항목인 경우 가격 조건에 따라 값 강제 변경
+            if is_target_gene:
+                plan_price = plan.get('sort_key', 0)
+                if plan_price >= 30:
+                    val = "선택 1"
+                # 30만원 미만이면 엑셀 원래 값 유지
+            else:
+                # 일반 항목 처리 로직 (선택 N 캐싱 등)
+                if current_main_cat in ["A", "B", "C"]:
+                    cache = fill_cache[idx]
+                    if "선택" in val: cache[current_main_cat] = val
+                    elif val == "" and cache[current_main_cat]: val = cache[current_main_cat]
+                    elif val != "": cache[current_main_cat] = None
+                    
+                    if "선택" in val:
+                        rule = ""
+                        if current_main_cat == "A": rule = plan.get('a_rule', '')
+                        elif current_main_cat == "B": rule = plan.get('b_rule', '')
+                        elif current_main_cat == "C": rule = plan.get('c_rule', '')
+                        if rule:
+                            val = "" if rule == "-" else rule
 
             if "미선택" in val: val = ""
             row_vals.append(val)
-
-        # ---------------------------------------------------------
-        # [수정됨] 유전자 항목 자동 분할 및 선택1 강제 적용 로직
-        # ---------------------------------------------------------
-        # 엑셀의 "유전자"와 "20종"이 포함된 행을 찾음 (예: '2 유전자 20종')
-        if "유전자" in item_name and "20종" in item_name:
-            # 1. 분할하여 표시할 4가지 항목 이름 정의
-            split_items = [
-                "2-1 유전자20종(암&중증질병)",
-                "2-2 유전자19/20종(멘탈&이너)",
-                "2-3 유전자 16종(면역)",
-                "2-4 유전자 20종 (라이프)"
-            ]
-            
-            # 2. 4개 항목을 각각 생성
-            for sub_name in split_items:
-                new_vals = []
-                for idx, plan in enumerate(plans):
-                    plan_price = plan.get('sort_key', 0)
-                    
-                    # [핵심 수정] 30만원 이상이면 무조건 '선택1'로 표시
-                    if plan_price >= 30:
-                        new_vals.append("선택1")
-                    else:
-                        # 30만원 미만이면 엑셀의 원래 값(X, - 등)을 그대로 유지
-                        # 단, 엑셀 원본이 'O'였다면 그대로 'O'가 들어감
-                        origin_val = row_vals[idx] if idx < len(row_vals) else ""
-                        new_vals.append(origin_val)
-                
-                # 새로운 항목 생성
-                new_entry = {"category": sub_cat, "name": sub_name, "desc": item_desc, "values": new_vals}
-                
-                # 데이터 리스트에 추가 (A그룹으로 가정)
-                if current_main_cat == "A": parsed_data["A"].append(new_entry)
-                elif current_main_cat == "B": parsed_data["B"].append(new_entry)
-                elif current_main_cat == "C": parsed_data["C"].append(new_entry)
-            
-            # 원래 있던 "2 유전자 20종" 행은 추가하지 않고 건너뜀
-            continue
-        # ---------------------------------------------------------
 
         entry = {"category": sub_cat, "name": item_name, "desc": item_desc, "values": row_vals}
         
@@ -234,6 +220,7 @@ def render_html_string(plans, data, summary, info):
                     if val != "":
                         span = 1
                         for k in range(r + 1, rows_cnt):
+                            # [중요] 값이 같으면 병합 (선택 1 == 선택 1 이면 병합됨)
                             if grid[k][c] == val:
                                 span += 1; skip_map[k][c] = True
                             else: break
@@ -417,7 +404,6 @@ def render_html_string(plans, data, summary, info):
             <div class="header-divider"></div>
     """
 
-    # [수정됨] C그룹 텍스트에서 '에피클락' 제거
     text_common = "간기능 | 간염 | 순환기계 | 당뇨 | 췌장기능 | 철결핍성 | 빈혈 | 혈액질환 | 전해질 | 신장기능 | 골격계질환<br>감염성 | 갑상선기능 | 부갑상선기능 | 종양표지자 | 소변 등 80여종 혈액(소변)검사<br>심전도 | 신장 | 체중 | 혈압 | 시력 | 청력 | 체성분 | 건강유형분석 | 폐기능 | 안저 | 안압<br>혈액점도검사 | 유전자20종 | 흉부X-ray | 복부초음파 | 위수면내시경<br>(여)자궁경부세포진 | (여)유방촬영 - #30세이상 권장#"
     text_a = "[01] 갑상선초음파  [10] 골다공증QCT+비타민D\n[02] 경동맥초음파  [11] 혈관협착도ABI\n[03] (여)경질초음파  [12] (여)액상 자궁경부세포진\n[04] 뇌CT  [13] (여) HPV바이러스\n[05] 폐CT  [14] (여)(혈액)마스토체크:유방암\n[06] 요추CT  [15] (혈액)NK뷰키트\n[07] 경추CT  [16] (여)(혈액)여성호르몬\n[08] 심장MDCT  [17] (남)(혈액)남성호르몬\n[09] 복부비만CT"
     text_b = "[가] 대장수면내시경  [마] 부정맥검사S-PATCH\n[나] 심장초음파  [바] [혈액]알레르기검사\n[다] (여)유방초음파  [사] [혈액]알츠온:치매위험도\n[라] [분변]대장암_얼리텍  [아] [혈액]간섬유화검사\n[자] 폐렴예방접종:15가"
