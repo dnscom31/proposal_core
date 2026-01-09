@@ -4,7 +4,7 @@ from pathlib import Path
 # (주의) proposal_core 모듈이 같은 폴더에 있어야 합니다.
 from proposal_core import load_price_options, parse_data_from_excel, render_html_string, generate_excel_bytes
 
-EXCEL_FILENAME = "2025 건강검진 견적서_표준.xlsx"
+EXCEL_FILENAME = "2026 건강검진 견적서_표준_수정.xlsx"
 
 # 1. 페이지 설정 (가장 먼저 실행되어야 함)
 st.set_page_config(page_title="2026 기업건강검진 견적서 생성기", layout="wide")
@@ -198,6 +198,7 @@ def main():
 if __name__ == "__main__":
     if check_password():
         main()
+
 
 
 
