@@ -103,14 +103,6 @@ def parse_data_from_excel(excel_path, header_row, plans):
     fill_cache = {i: {"A": None, "B": None, "C": None} for i in range(len(plans))}
     current_main_cat = ""
 
-    # [수정됨] 정확한 매칭을 위한 타겟 리스트 정의
-    target_gene_items = [
-        "2-1 유전자20종(암&중증질병)",
-        "2-2 유전자19/20종(멘탈&이너)",
-        "2-3 유전자 16종(면역)",
-        "2-4 유전자 20종 (라이프)"
-    ]
-
     for row in sheet.iter_rows(min_row=header_row + 1, values_only=True):
         if not row or len(row) < 2: continue
         col0 = str(row[0]).strip() if row[0] else ""
@@ -129,16 +121,13 @@ def parse_data_from_excel(excel_path, header_row, plans):
         item_desc = str(row[2]).strip() if row[2] else ""
         sub_cat = col0 if current_main_cat == "EQUIP" and col0 else ""
 
-        # [수정됨] 에피클락 제거 로직
+        # 에피클락 제거
         if "에피클락" in item_name:
             continue
 
-        # [수정됨] 유전자 검사 항목 여부 확인 (문자열 포함 여부로 유연하게 체크)
-        is_target_gene = any(t.replace(" ", "") in item_name.replace(" ", "") for t in target_gene_items)
-        
-        # 만약 정확한 이름이 일치하지 않을 수 있으니, "2-"로 시작하고 "유전자"가 포함된 경우도 체크
-        if not is_target_gene and "유전자" in item_name and any(x in item_name for x in ["2-1", "2-2", "2-3", "2-4"]):
-            is_target_gene = True
+        # [수정됨] 유전자 검사 항목 인식 로직 (매우 포괄적으로 변경)
+        # 이름에 "2-"와 "유전자"가 둘 다 있으면 2-1~2-4 항목으로 간주
+        is_target_gene = ("2-" in item_name and "유전자" in item_name)
 
         row_vals = []
         for idx, plan in enumerate(plans):
@@ -147,14 +136,14 @@ def parse_data_from_excel(excel_path, header_row, plans):
             if col_idx < len(row):
                 val = str(row[col_idx]).strip() if row[col_idx] else ""
 
-            # [수정됨] 유전자 항목인 경우 가격 조건에 따라 값 강제 변경
+            # [수정됨] 유전자 항목이면 값 강제 설정 (병합을 위해)
             if is_target_gene:
                 plan_price = plan.get('sort_key', 0)
                 if plan_price >= 30:
                     val = "선택 1"
                 # 30만원 미만이면 엑셀 원래 값 유지
             else:
-                # 일반 항목 처리 로직 (선택 N 캐싱 등)
+                # 일반 항목 처리 (빈칸 채우기 캐싱 로직)
                 if current_main_cat in ["A", "B", "C"]:
                     cache = fill_cache[idx]
                     if "선택" in val: cache[current_main_cat] = val
@@ -220,7 +209,7 @@ def render_html_string(plans, data, summary, info):
                     if val != "":
                         span = 1
                         for k in range(r + 1, rows_cnt):
-                            # [중요] 값이 같으면 병합 (선택 1 == 선택 1 이면 병합됨)
+                            # [핵심] 값이 같으면 병합 (선택 1 == 선택 1 이면 병합됨)
                             if grid[k][c] == val:
                                 span += 1; skip_map[k][c] = True
                             else: break
@@ -407,7 +396,6 @@ def render_html_string(plans, data, summary, info):
     text_common = "간기능 | 간염 | 순환기계 | 당뇨 | 췌장기능 | 철결핍성 | 빈혈 | 혈액질환 | 전해질 | 신장기능 | 골격계질환<br>감염성 | 갑상선기능 | 부갑상선기능 | 종양표지자 | 소변 등 80여종 혈액(소변)검사<br>심전도 | 신장 | 체중 | 혈압 | 시력 | 청력 | 체성분 | 건강유형분석 | 폐기능 | 안저 | 안압<br>혈액점도검사 | 유전자20종 | 흉부X-ray | 복부초음파 | 위수면내시경<br>(여)자궁경부세포진 | (여)유방촬영 - #30세이상 권장#"
     text_a = "[01] 갑상선초음파  [10] 골다공증QCT+비타민D\n[02] 경동맥초음파  [11] 혈관협착도ABI\n[03] (여)경질초음파  [12] (여)액상 자궁경부세포진\n[04] 뇌CT  [13] (여) HPV바이러스\n[05] 폐CT  [14] (여)(혈액)마스토체크:유방암\n[06] 요추CT  [15] (혈액)NK뷰키트\n[07] 경추CT  [16] (여)(혈액)여성호르몬\n[08] 심장MDCT  [17] (남)(혈액)남성호르몬\n[09] 복부비만CT"
     text_b = "[가] 대장수면내시경  [마] 부정맥검사S-PATCH\n[나] 심장초음파  [바] [혈액]알레르기검사\n[다] (여)유방초음파  [사] [혈액]알츠온:치매위험도\n[라] [분변]대장암_얼리텍  [아] [혈액]간섬유화검사\n[자] 폐렴예방접종:15가"
-    # [수정] 에피클락 삭제됨
     text_c = "[A] 뇌MRI+MRA  [E] [혈액]스마트암검사(남6/여7종)\n[B] 췌장MRI  [F] [혈액]선천적 유전자검사\n[C] 경추MRI\n[D] 요추MRI"
 
     guide_content = f"""
