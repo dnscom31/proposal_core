@@ -10,22 +10,94 @@ from openpyxl.worksheet.pagebreak import Break
 # ----------------------------------------------------
 # 공통 유틸: 문자열 정규화 / 유전자(2-1~2-4) 항목 판별
 # ----------------------------------------------------
-DASH_CHARS = "–—−‐‑‒﹣－"
+DASH_CHARS = "–—−‐‑‒﹣－ㅡ"
 
 def normalize_key(text):
-    """공백/특수 대시 등을 표준화하여 비교 안정성 확보"""
+    """공백/특수 대시/유사문자 등을 표준화하여 비교 안정성 확보"""
     if text is None:
         return ""
     s = unicodedata.normalize("NFKC", str(text))
+
+    # 대시처럼 보이는 문자들 통일
     for ch in DASH_CHARS:
         s = s.replace(ch, "-")
+
+    # 자주 섞이는 유사문자(키보드 입력 실수 등) 보정
+    s = s.replace("ㅡ", "-")
+
+    # 공백 제거
     s = re.sub(r"\s+", "", s)
+
+    # 맨 앞 글머리표/특수문자 제거(예: '•2-1', '(2-1)')
+    s = re.sub(r"^[^0-9]*", "", s)
     return s
+
 
 def is_gene_block_item(name):
     """'2-1~2-4'로 시작하고 '유전자'가 포함된 항목인지 판별"""
     key = normalize_key(name)
-    return ("유전자" in key) and bool(re.match(r"^2-([1-4])", key))
+    return ("유전자" in key) and bool(re.match(r"^2[-._]*([1-4])", key))
+
+
+
+def extract_gene_num(name):
+    """유전자 항목의 번호(1~4)를 추출. 실패 시 None."""
+    key = normalize_key(name)
+    if "유전자" not in key:
+        return None
+    m = re.match(r"^2[-._]*([1-4])", key)
+    return int(m.group(1)) if m else None
+
+
+def find_gene_block_indices(items):
+    """EQUIP 항목 중 '유전자 4행(2-1~2-4)'에 해당하는 행 인덱스를 찾는다.
+    - 1순위: 2-1~2-4 번호가 모두 잡히는 경우
+    - 2순위: '유전자'가 포함된 행 중 연속된 4개
+    - 3순위: '유전자' 포함 행이 4개 이상이면 앞 4개
+    """
+    num_to_idx = {}
+    for i, it in enumerate(items):
+        num = extract_gene_num(it.get("name", ""))
+        if num is not None:
+            num_to_idx[num] = i
+
+    if all(n in num_to_idx for n in (1, 2, 3, 4)):
+        return [num_to_idx[n] for n in (1, 2, 3, 4)]
+
+    gene_idxs = [i for i, it in enumerate(items) if "유전자" in normalize_key(it.get("name", ""))]
+    if len(gene_idxs) < 4:
+        return []
+
+    # 연속된 4개 찾기
+    for start in range(len(gene_idxs) - 3):
+        block = gene_idxs[start:start + 4]
+        if block[0] + 1 == block[1] and block[1] + 1 == block[2] and block[2] + 1 == block[3]:
+            return block
+
+    # 연속이 아니어도 4개 이상이면 앞 4개 사용(최후의 안전장치)
+    return gene_idxs[:4]
+
+
+def apply_gene_block_fix_30only(equip_items, plans):
+    """유전자(2-1~2-4) 블록 보정:
+    - 30만원 플랜 열에서만 4개 행 모두 '선택 1'로 채움(병합 가능해짐)
+    - 병합 필터용 플래그(_force_merge_gene) 설정
+    """
+    idxs = find_gene_block_indices(equip_items)
+    if not idxs:
+        return False
+
+    # 병합 플래그
+    for i in idxs:
+        equip_items[i]["_force_merge_gene"] = True
+
+    # 30만원 플랜에서만 값 강제
+    for p_idx, plan in enumerate(plans):
+        if plan.get("sort_key", 0) == 30:
+            for i in idxs:
+                equip_items[i]["values"][p_idx] = "선택 1"
+
+    return True
 
 
 def scan_default_counts(ws, col_idx, start_row):
@@ -186,6 +258,9 @@ def parse_data_from_excel(excel_path, header_row, plans):
         elif current_main_cat == "C": parsed_data["C"].append(entry)
         elif current_main_cat == "EQUIP": parsed_data["EQUIP"].append(entry)
         elif current_main_cat == "COMMON": parsed_data["COMMON_BLOOD"].append(entry)
+
+    # [추가] 유전자(2-1~2-4) 블록 보정: 30만원 플랜에서만 선택 1 채우고 병합 플래그 부여
+    apply_gene_block_fix_30only(parsed_data.get("EQUIP", []), plans)
 
     wb.close()
     return parsed_data, summary_info
@@ -532,7 +607,7 @@ def render_html_string(plans, data, summary, info):
         "values": price_vals
     })
 
-    table_equip = render_table_html("7. 기초 장비 및 혈액 검사", equip_data, show_sub=True, merge=True, merge_filter=lambda it: is_gene_block_item(it.get("name","")))
+    table_equip = render_table_html("7. 기초 장비 및 혈액 검사", equip_data, show_sub=True, merge=True, merge_filter=lambda it: bool(it.get("_force_merge_gene")))
 
     footer = """
             <div style="text-align:center; font-size:11px; color:#7f8c8d; margin-top:30px; padding-top:20px; border-top:1px solid #eee;">
@@ -840,7 +915,7 @@ def generate_excel_bytes(plans, data, summary, info):
         "values": price_vals
     })
 
-    write_section("7. 기초 장비 및 혈액 검사", equip_data, merge=True, merge_filter=lambda it: is_gene_block_item(it.get("name","")))
+    write_section("7. 기초 장비 및 혈액 검사", equip_data, merge=True, merge_filter=lambda it: bool(it.get("_force_merge_gene")))
 
     ws.column_dimensions['A'].width = 32
     for i in range(len(plans)): ws.column_dimensions[get_column_letter(i+2)].width = 20
