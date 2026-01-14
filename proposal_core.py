@@ -1,10 +1,32 @@
 import io
 import re
+import unicodedata
 from datetime import datetime
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.pagebreak import Break
+
+# ----------------------------------------------------
+# 공통 유틸: 문자열 정규화 / 유전자(2-1~2-4) 항목 판별
+# ----------------------------------------------------
+DASH_CHARS = "–—−‐‑‒﹣－"
+
+def normalize_key(text):
+    """공백/특수 대시 등을 표준화하여 비교 안정성 확보"""
+    if text is None:
+        return ""
+    s = unicodedata.normalize("NFKC", str(text))
+    for ch in DASH_CHARS:
+        s = s.replace(ch, "-")
+    s = re.sub(r"\s+", "", s)
+    return s
+
+def is_gene_block_item(name):
+    """'2-1~2-4'로 시작하고 '유전자'가 포함된 항목인지 판별"""
+    key = normalize_key(name)
+    return ("유전자" in key) and bool(re.match(r"^2-([1-4])", key))
+
 
 def scan_default_counts(ws, col_idx, start_row):
     """엑셀에서 '선택 N'을 스캔하여 기본값 추출"""
@@ -102,15 +124,6 @@ def parse_data_from_excel(excel_path, header_row, plans):
 
     fill_cache = {i: {"A": None, "B": None, "C": None} for i in range(len(plans))}
     current_main_cat = ""
-
-    # [수정됨] 정확한 매칭을 위한 타겟 리스트 정의
-    target_gene_items = [
-        "2-1 유전자20종(암&중증질병)",
-        "2-2 유전자19/20종(멘탈&이너)",
-        "2-3 유전자 16종(면역)",
-        "2-4 유전자 20종 (라이프)"
-    ]
-
     for row in sheet.iter_rows(min_row=header_row + 1, values_only=True):
         if not row or len(row) < 2: continue
         col0 = str(row[0]).strip() if row[0] else ""
@@ -132,14 +145,8 @@ def parse_data_from_excel(excel_path, header_row, plans):
         # [수정됨] 에피클락 제거 로직
         if "에피클락" in item_name:
             continue
-
-        # [수정됨] 유전자 검사 항목 여부 확인 (문자열 포함 여부로 유연하게 체크)
-        is_target_gene = any(t.replace(" ", "") in item_name.replace(" ", "") for t in target_gene_items)
-        
-        # 만약 정확한 이름이 일치하지 않을 수 있으니, "2-"로 시작하고 "유전자"가 포함된 경우도 체크
-        if not is_target_gene and "유전자" in item_name and any(x in item_name for x in ["2-1", "2-2", "2-3", "2-4"]):
-            is_target_gene = True
-
+        # [수정] 유전자(2-1~2-4) 항목 판별: 공백/특수대시 차이를 흡수하여 인식 안정화
+        is_target_gene = is_gene_block_item(item_name)
         row_vals = []
         for idx, plan in enumerate(plans):
             col_idx = plan["col_idx"] - 1
@@ -150,9 +157,9 @@ def parse_data_from_excel(excel_path, header_row, plans):
             # [수정됨] 유전자 항목인 경우 가격 조건에 따라 값 강제 변경
             if is_target_gene:
                 plan_price = plan.get('sort_key', 0)
-                if plan_price >= 30:
+                if plan_price == 30:
                     val = "선택 1"
-                # 30만원 미만이면 엑셀 원래 값 유지
+                # 30만원이 아니면 엑셀 원래 값 유지
             else:
                 # 일반 항목 처리 로직 (선택 N 캐싱 등)
                 if current_main_cat in ["A", "B", "C"]:
@@ -199,7 +206,7 @@ def render_html_string(plans, data, summary, info):
         if "선택" in val: return normalize_text(val)
         return val
 
-    def render_table_html(title, item_list, show_sub=False, footer=None, merge=True):
+    def render_table_html(title, item_list, show_sub=False, footer=None, merge=True, merge_filter=None):
         if not item_list: return ""
         
         grid = []
@@ -212,16 +219,18 @@ def render_html_string(plans, data, summary, info):
         rowspan_map = [[1] * cols_cnt for _ in range(rows_cnt)]
         skip_map = [[False] * cols_cnt for _ in range(rows_cnt)]
 
+        can_merge_row = [merge_filter(it) for it in item_list] if merge_filter else [True] * rows_cnt
+
         if merge:
             for c in range(cols_cnt):
                 for r in range(rows_cnt):
                     if skip_map[r][c]: continue
                     val = grid[r][c]
-                    if val != "":
+                    if val != "" and can_merge_row[r]:
                         span = 1
                         for k in range(r + 1, rows_cnt):
                             # [중요] 값이 같으면 병합 (선택 1 == 선택 1 이면 병합됨)
-                            if grid[k][c] == val:
+                            if can_merge_row[k] and grid[k][c] == val:
                                 span += 1; skip_map[k][c] = True
                             else: break
                         rowspan_map[r][c] = span
@@ -523,7 +532,7 @@ def render_html_string(plans, data, summary, info):
         "values": price_vals
     })
 
-    table_equip = render_table_html("7. 기초 장비 및 혈액 검사", equip_data, show_sub=True, merge=False)
+    table_equip = render_table_html("7. 기초 장비 및 혈액 검사", equip_data, show_sub=True, merge=True, merge_filter=lambda it: is_gene_block_item(it.get("name","")))
 
     footer = """
             <div style="text-align:center; font-size:11px; color:#7f8c8d; margin-top:30px; padding-top:20px; border-top:1px solid #eee;">
@@ -746,7 +755,7 @@ def generate_excel_bytes(plans, data, summary, info):
     current_row += 1
 
     # 상세
-    def write_section(title, items, merge=True):
+    def write_section(title, items, merge=True, merge_filter=None):
         nonlocal current_row
         if not items: return
         ws.cell(row=current_row, column=1, value=title).font = Font(bold=True, size=12, color="2C3E50")
@@ -786,15 +795,17 @@ def generate_excel_bytes(plans, data, summary, info):
                 if v == "O": c.font = Font(bold=True)
             current_row += 1
         
+        can_merge_row = [merge_filter(it) for it in items] if merge_filter else [True] * len(items)
+
         if merge:
             for c_idx in range(len(plans)):
                 r = 0
                 while r < len(grid):
                     val = grid[r][c_idx]
-                    if val:
+                    if val and can_merge_row[r]:
                         span = 1
                         for k in range(r + 1, len(grid)):
-                            if grid[k][c_idx] == val: span += 1
+                            if can_merge_row[k] and grid[k][c_idx] == val: span += 1
                             else: break
                         if span > 1:
                             ws.merge_cells(start_row=start_row+r, start_column=c_idx+2, end_row=start_row+r+span-1, end_column=c_idx+2)
@@ -829,7 +840,7 @@ def generate_excel_bytes(plans, data, summary, info):
         "values": price_vals
     })
 
-    write_section("7. 기초 장비 및 혈액 검사", equip_data, merge=False)
+    write_section("7. 기초 장비 및 혈액 검사", equip_data, merge=True, merge_filter=lambda it: is_gene_block_item(it.get("name","")))
 
     ws.column_dimensions['A'].width = 32
     for i in range(len(plans)): ws.column_dimensions[get_column_letter(i+2)].width = 20
