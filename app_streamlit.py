@@ -164,10 +164,11 @@ def main():
                 final_plans.append({
                     "name": p_name,
                     "col_idx": opt['col_idx'],
+                    "sort_key": opt.get('sort_key'),   # ✅ 추가
                     "a_rule": p_a, "b_rule": p_b, "c_rule": p_c,
-                    # [수정됨] 플랜명이 바뀌어도 원래 가격 정보(예: 30만원)를 알 수 있도록 추가
                     "price_txt": opt['price_txt']
                 })
+
 
     st.divider()
 
@@ -198,6 +199,7 @@ def main():
 if __name__ == "__main__":
     if check_password():
         main()
+
 
 
 
