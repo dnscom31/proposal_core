@@ -8,13 +8,9 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.pagebreak import Break
 
 # ----------------------------------------------------
-# 공통 유틸: 문자열 정규화 / 유전자(2-1~2-4) 항목 판별
+# 1. 유틸리티 및 유전자 블록 처리 로직
 # ----------------------------------------------------
 DASH_CHARS = "–—−‐‑‒﹣－ㅡ"
-
-# ----------------------------------------------------
-# [수정] 유전자 블록 인식 및 처리 로직 개선
-# ----------------------------------------------------
 
 def normalize_key(text):
     """공백/특수 대시/유사문자 등을 표준화"""
@@ -25,31 +21,24 @@ def normalize_key(text):
         s = s.replace(ch, "-")
     s = s.replace("ㅡ", "-")
     s = re.sub(r"\s+", "", s)
-    # [수정] 맨 앞 글머리표 제거 로직을 조금 더 보수적으로 적용 (숫자/문자 유지)
-    # 기존: s = re.sub(r"^[^0-9]*", "", s) -> 2-1이 아닌 텍스트가 날아갈 수 있음
     return s
 
 def is_gene_block_item(name):
     """
-    유전자 2-1~2-4 항목인지 판별 (조건 완화)
+    유전자 항목 판별 (조건 완화)
     - '유전자' 포함
     - '선천적'(C그룹) 제외
-    - 2-X 패턴이 있거나, 없더라도 유전자 키워드가 확실하면 포함
     """
     key = normalize_key(name)
     if "유전자" not in key:
         return False
-    if "선천적" in key: # C그룹 항목 제외
+    if "선천적" in key: 
         return False
-    
-    # 2-1, 2.1, 2_1 등의 패턴 확인 (선택적)
-    # 번호가 없어도 유전자 항목이 연속되면 잡기 위해 여기서는 True를 리턴하는 범위를 넓힘
     return True
 
 def extract_gene_num(name):
-    """유전자 항목의 번호(1~4)를 추출 시도"""
+    """유전자 항목의 번호(1~4) 추출"""
     key = normalize_key(name)
-    # 2-1, 2.1, 2_1, (2-1) 등 다양한 패턴 대응
     match = re.search(r"2[-._]*([1-4])", key)
     if match:
         return int(match.group(1))
@@ -57,62 +46,53 @@ def extract_gene_num(name):
 
 def find_gene_block_indices(items):
     """
-    EQUIP 항목 중 '유전자 4행'에 해당하는 인덱스 찾기 (로직 강화)
+    리스트 내에서 유전자 4개 항목의 인덱스 그룹 찾기
     """
-    # 1. '유전자' 키워드가 있고 '선천적'이 아닌 모든 항목의 인덱스 수집
     gene_idxs = []
     for i, it in enumerate(items):
-        name = it.get("name", "")
-        if is_gene_block_item(name):
+        if is_gene_block_item(it.get("name", "")):
             gene_idxs.append(i)
 
-    # 2. 항목이 4개 미만이면 처리 불가
     if len(gene_idxs) < 4:
         return []
 
-    # 3. 번호(1~4)가 명확한 경우 우선 매핑
+    # 1. 번호(1~4)가 명확한 경우
     num_to_idx = {}
     for idx in gene_idxs:
         num = extract_gene_num(items[idx].get("name", ""))
         if num is not None:
             num_to_idx[num] = idx
-    
     if all(n in num_to_idx for n in (1, 2, 3, 4)):
         return [num_to_idx[n] for n in (1, 2, 3, 4)]
 
-    # 4. 번호 매핑 실패 시, 연속된 4개 블록 탐색 (인덱스가 연속적인지)
+    # 2. 연속된 4개 블록 탐색
     for start in range(len(gene_idxs) - 3):
         block = gene_idxs[start:start + 4]
-        # 인덱스가 1씩 증가하는지 확인 (중간에 다른 항목이 없는지)
         if block[0] + 1 == block[1] and block[1] + 1 == block[2] and block[2] + 1 == block[3]:
             return block
 
-    # 5. 연속되지 않더라도 유전자 항목이 4개 이상 발견되면 순서대로 4개 반환 (최후 수단)
+    # 3. 최후의 수단: 그냥 앞에서부터 4개
     return gene_idxs[:4]
 
-def apply_gene_block_fix_30only(equip_items, plans):
+def apply_gene_block_fix_30only(items, plans):
     """
     유전자(2-1~2-4) 블록 보정:
-    - 30만원 플랜 열에서만 4개 행 모두 '선택 1'로 강제 설정
+    - 30만원 플랜 열에서만 값을 '선택 1'로 통일
     - 병합 필터용 플래그(_force_merge_gene) 설정
     """
-    idxs = find_gene_block_indices(equip_items)
+    idxs = find_gene_block_indices(items)
     if not idxs:
         return False
 
-    # 30만원 플랜 인덱스 찾기
+    # 30만원 플랜 위치 찾기
     p_indices = [i for i, p in enumerate(plans) if p.get("sort_key", 0) == 30]
 
     for i in idxs:
-        # 병합 플래그 설정
-        equip_items[i]["_force_merge_gene"] = True
-        
-        # 30만원 플랜 컬럼 값을 '선택 1'로 강제 덮어쓰기 (병합 조건 충족)
+        items[i]["_force_merge_gene"] = True
         for p_idx in p_indices:
-            equip_items[i]["values"][p_idx] = "선택 1"
+            items[i]["values"][p_idx] = "선택 1"
 
     return True
-
 
 def scan_default_counts(ws, col_idx, start_row):
     """엑셀에서 '선택 N'을 스캔하여 기본값 추출"""
@@ -192,12 +172,10 @@ def load_price_options(excel_path):
     price_cols.sort(key=lambda x: x['sort_key'])
     return header_row_idx, price_cols
 
+# ----------------------------------------------------
+# 2. 데이터 파싱 로직 (수정됨: 유전자 A그룹 유지 + 병합 적용)
+# ----------------------------------------------------
 def parse_data_from_excel(excel_path, header_row, plans):
-    """
-    엑셀 데이터 파싱
-    - 유전자 항목을 강제 이동시키지 않고 원래 위치(A그룹)에 둠
-    - 대신 A그룹 리스트에 대해서도 '선택 1' 강제 병합 로직을 수행함
-    """
     wb = openpyxl.load_workbook(excel_path, data_only=True)
     sheet = wb.active
     
@@ -235,7 +213,6 @@ def parse_data_from_excel(excel_path, header_row, plans):
 
         if "에피클락" in item_name: continue
 
-        # 유전자 항목 판별
         is_target_gene = is_gene_block_item(item_name)
 
         row_vals = []
@@ -245,8 +222,7 @@ def parse_data_from_excel(excel_path, header_row, plans):
             if col_idx < len(row):
                 val = str(row[col_idx]).strip() if row[col_idx] else ""
 
-            # [중요] 유전자 항목이 '아닌' 경우에만 일반 그룹 로직(선택 N 자동채우기 등) 적용
-            # 유전자 항목은 아래에서 별도로 '선택 1'로 덮어쓸 것이므로 여기서는 건너뜀
+            # 유전자 항목이 '아닌' 경우에만 일반 로직 적용
             if not is_target_gene and current_main_cat in ["A", "B", "C"]:
                 cache = fill_cache[idx]
                 if "선택" in val: cache[current_main_cat] = val
@@ -266,7 +242,6 @@ def parse_data_from_excel(excel_path, header_row, plans):
 
         entry = {"category": sub_cat, "name": item_name, "desc": item_desc, "values": row_vals}
         
-        # [원복] 위치 강제 이동 로직 삭제 -> 엑셀 순서 그대로 들어감
         if current_main_cat == "A": parsed_data["A"].append(entry)
         elif current_main_cat == "B": parsed_data["B"].append(entry)
         elif current_main_cat == "C": parsed_data["C"].append(entry)
@@ -275,17 +250,20 @@ def parse_data_from_excel(excel_path, header_row, plans):
 
     wb.close()
 
-    # -------------------------------------------------------------------------
-    # [핵심] A그룹과 EQUIP 양쪽 모두 유전자 병합 처리를 시도
-    # A그룹 리스트 안에 유전자 항목이 있으면 -> 30만원 플랜 값을 '선택 1'로 통일하고 병합 플래그 설정
-    # -------------------------------------------------------------------------
+    # [중요] 모든 리스트에 대해 유전자 병합 로직 실행
+    # (A그룹에 있든 EQUIP에 있든 상관없이 병합 플래그 설정)
     apply_gene_block_fix_30only(parsed_data.get("A", []), plans)
+    apply_gene_block_fix_30only(parsed_data.get("B", []), plans) # 혹시 몰라 추가
+    apply_gene_block_fix_30only(parsed_data.get("C", []), plans) # 혹시 몰라 추가
     apply_gene_block_fix_30only(parsed_data.get("EQUIP", []), plans)
+    apply_gene_block_fix_30only(parsed_data.get("COMMON_BLOOD", []), plans)
 
     return parsed_data, summary_info
-    
+
+# ----------------------------------------------------
+# 3. HTML 생성 (A그룹 병합 옵션 추가)
+# ----------------------------------------------------
 def render_html_string(plans, data, summary, info):
-    """HTML 생성"""
     today_date = datetime.now().strftime("%Y년 %m월 %d일")
     company = info.get('company', '')
     manager = info.get('name', '담당자')
@@ -323,7 +301,6 @@ def render_html_string(plans, data, summary, info):
                     if val != "" and can_merge_row[r]:
                         span = 1
                         for k in range(r + 1, rows_cnt):
-                            # [중요] 값이 같으면 병합 (선택 1 == 선택 1 이면 병합됨)
                             if can_merge_row[k] and grid[k][c] == val:
                                 span += 1; skip_map[k][c] = True
                             else: break
@@ -507,12 +484,6 @@ def render_html_string(plans, data, summary, info):
             <div class="header-divider"></div>
     """
 
-    text_common = "간기능 | 간염 | 순환기계 | 당뇨 | 췌장기능 | 철결핍성 | 빈혈 | 혈액질환 | 전해질 | 신장기능 | 골격계질환<br>감염성 | 갑상선기능 | 부갑상선기능 | 종양표지자 | 소변 등 80여종 혈액(소변)검사<br>심전도 | 신장 | 체중 | 혈압 | 시력 | 청력 | 체성분 | 건강유형분석 | 폐기능 | 안저 | 안압<br>혈액점도검사 | 유전자20종 | 흉부X-ray | 복부초음파 | 위수면내시경<br>(여)자궁경부세포진 | (여)유방촬영 - #30세이상 권장#"
-    text_a = "[01] 갑상선초음파  [10] 골다공증QCT+비타민D\n[02] 경동맥초음파  [11] 혈관협착도ABI\n[03] (여)경질초음파  [12] (여)액상 자궁경부세포진\n[04] 뇌CT  [13] (여) HPV바이러스\n[05] 폐CT  [14] (여)(혈액)마스토체크:유방암\n[06] 요추CT  [15] (혈액)NK뷰키트\n[07] 경추CT  [16] (여)(혈액)여성호르몬\n[08] 심장MDCT  [17] (남)(혈액)남성호르몬\n[09] 복부비만CT"
-    text_b = "[가] 대장수면내시경  [마] 부정맥검사S-PATCH\n[나] 심장초음파  [바] [혈액]알레르기검사\n[다] (여)유방초음파  [사] [혈액]알츠온:치매위험도\n[라] [분변]대장암_얼리텍  [아] [혈액]간섬유화검사\n[자] 폐렴예방접종:15가"
-    # [수정] 에피클락 삭제됨
-    text_c = "[A] 뇌MRI+MRA  [E] [혈액]스마트암검사(남6/여7종)\n[B] 췌장MRI  [F] [혈액]선천적 유전자검사\n[C] 경추MRI\n[D] 요추MRI"
-
     guide_content = f"""
             <div class="guide-box">
                 <span class="guide-title">1. 유동적 그룹 선택 시스템 (Flexible Option)</span>
@@ -604,12 +575,14 @@ def render_html_string(plans, data, summary, info):
             </div>
     """
 
+    # [수정] A 그룹에도 유전자 병합 필터 적용
     table_a = render_table_html(
         "4. A 그룹 ", 
         data.get('A', []), 
         merge=True, 
         merge_filter=lambda it: bool(it.get("_force_merge_gene"))
     )
+    
     table_b = render_table_html("5. B 그룹 ", data.get('B', []), footer="* A그룹 2개를 제외하고 B그룹 1개 선택 가능")
     table_c = render_table_html("6. C 그룹 ", data.get('C', []), footer="* A그룹 4개를 제외하고 C그룹 1개 선택 가능")
     
@@ -631,7 +604,14 @@ def render_html_string(plans, data, summary, info):
         "values": price_vals
     })
 
-    table_equip = render_table_html("7. 기초 장비 및 혈액 검사", equip_data, show_sub=True, merge=True, merge_filter=lambda it: bool(it.get("_force_merge_gene")))
+    # [수정] 기초장비에도 유전자 병합 필터 적용
+    table_equip = render_table_html(
+        "7. 기초 장비 및 혈액 검사", 
+        equip_data, 
+        show_sub=True, 
+        merge=True, 
+        merge_filter=lambda it: bool(it.get("_force_merge_gene"))
+    )
 
     footer = """
             <div style="text-align:center; font-size:11px; color:#7f8c8d; margin-top:30px; padding-top:20px; border-top:1px solid #eee;">
@@ -644,20 +624,20 @@ def render_html_string(plans, data, summary, info):
     
     return head + cover_html + header_content + guide_content + summary_content + table_a + table_b + table_c + table_equip + footer
 
+# ----------------------------------------------------
+# 4. 엑셀 생성 (함수 순서 및 병합 로직 수정)
+# ----------------------------------------------------
 def generate_excel_bytes(plans, data, summary, info):
-    """엑셀 생성"""
     company = info.get('company', '기업')
     manager_name = info.get('name', '')
     title_text = f"2026 {company} 임직원 건강검진 제안서"
     
     wb = openpyxl.Workbook()
     
-    # ----------------------------------------------------
-    # 1. 표지 시트 생성 - 공문서 스타일
-    # ----------------------------------------------------
+    # [표지 시트]
     ws_cover = wb.active
     ws_cover.title = "표지"
-    ws_cover.page_setup.paperSize = 9  # A4
+    ws_cover.page_setup.paperSize = 9
     ws_cover.print_options.horizontalCentered = True
     ws_cover.print_options.verticalCentered = True
     
@@ -700,9 +680,7 @@ def generate_excel_bytes(plans, data, summary, info):
         ws_cover.row_dimensions[r].height = 20
     ws_cover.row_dimensions[17].height = 60
 
-    # ----------------------------------------------------
-    # 2. 견적서 상세 시트 생성
-    # ----------------------------------------------------
+    # [제안서 상세 시트]
     ws = wb.create_sheet("제안서")
     
     ws.page_setup.paperSize = 9
@@ -726,7 +704,6 @@ def generate_excel_bytes(plans, data, summary, info):
             ws.cell(row=r, column=min_c).border = Border(left=box_side, right=ws.cell(row=r, column=min_c).border.right, top=ws.cell(row=r, column=min_c).border.top, bottom=ws.cell(row=r, column=min_c).border.bottom)
             ws.cell(row=r, column=max_c).border = Border(left=ws.cell(row=r, column=max_c).border.left, right=box_side, top=ws.cell(row=r, column=max_c).border.top, bottom=ws.cell(row=r, column=max_c).border.bottom)
 
-    # Header
     ws['A1'] = "뉴고려병원"
     ws['A1'].font = Font(size=16, bold=True, color="1A253A")
     ws['A2'] = title_text
@@ -753,7 +730,7 @@ def generate_excel_bytes(plans, data, summary, info):
 
     current_row = 6
 
-    # 유동적 그룹
+    # 1. 유동적 그룹
     ws.cell(row=current_row, column=1, value="1. 유동적 그룹 선택 시스템 (Flexible Option)").font = Font(bold=True, size=12, color="2C3E50")
     current_row += 1
     guide_text = (
@@ -775,11 +752,10 @@ def generate_excel_bytes(plans, data, summary, info):
     for r in range(start_r, end_r + 1): ws.row_dimensions[r].height = 21 
     current_row += 8
 
-    # 상세 항목
+    # 2. 상세 항목
     ws.cell(row=current_row, column=1, value="2. 상세 검진 항목 및 그룹 구성 요약").font = Font(bold=True, size=12, color="2C3E50")
     current_row += 1
     
-    # [수정됨] C그룹 텍스트 수정 반영 (에피클락 삭제)
     text_common = "간기능 | 간염 | 순환기계 | 당뇨 | 췌장기능 | 철결핍성 | 빈혈 | 혈액질환 | 전해질 | 신장기능 | 골격계질환\n감염성 | 갑상선기능 | 부갑상선기능 | 종양표지자 | 소변 등 80여종 혈액(소변)검사\n심전도 | 신장 | 체중 | 혈압 | 시력 | 청력 | 체성분 | 건강유형분석 | 폐기능 | 안저 | 안압\n혈액점도검사 | 유전자20종 | 흉부X-ray | 복부초음파 | 위수면내시경\n(여)자궁경부세포진 | (여)유방촬영 - #30세이상 권장#"
     text_a = "[01] 갑상선초음파  [10] 골다공증QCT+비타민D\n[02] 경동맥초음파  [11] 혈관협착도ABI\n[03] (여)경질초음파  [12] (여)액상 자궁경부세포진\n[04] 뇌CT  [13] (여) HPV바이러스\n[05] 폐CT  [14] (여)(혈액)마스토체크:유방암\n[06] 요추CT  [15] (혈액)NK뷰키트\n[07] 경추CT  [16] (여)(혈액)여성호르몬\n[08] 심장MDCT  [17] (남)(혈액)남성호르몬\n[09] 복부비만CT"
     text_b = "[가] 대장수면내시경  [마] 부정맥검사S-PATCH\n[나] 심장초음파  [바] [혈액]알레르기검사\n[다] (여)유방초음파  [사] [혈액]알츠온:치매위험도\n[라] [분변]대장암_얼리텍  [아] [혈액]간섬유화검사\n[자] 폐렴예방접종:15가"
@@ -824,7 +800,7 @@ def generate_excel_bytes(plans, data, summary, info):
     write_group_box("C 그룹", text_c, "2C3E50", 15)
     current_row += 1
 
-    # Summary
+    # 3. Summary
     ws.cell(row=current_row, column=1, value="3. 검진 프로그램 요약").font = Font(bold=True, size=12)
     current_row += 1
     ws.cell(row=current_row, column=1, value="구분").fill = sum_fill
@@ -845,12 +821,7 @@ def generate_excel_bytes(plans, data, summary, info):
             c.alignment = center_align; c.border = thin_border
         current_row += 1
 
-    write_section(
-        "4. A 그룹 ", 
-        data['A'], 
-        merge=True, 
-        merge_filter=lambda it: bool(it.get("_force_merge_gene"))
-    )
+    write_sum_row("A그룹", [s['a'] for s in summary])
     write_sum_row("B그룹", [s['b'] for s in summary])
     write_sum_row("C그룹", [s['c'] for s in summary])
     current_row += 1
@@ -858,7 +829,7 @@ def generate_excel_bytes(plans, data, summary, info):
     ws.row_breaks.append(Break(id=current_row))
     current_row += 1
 
-    # 상세
+    # [중요] write_section 함수 정의를 호출 전으로 이동
     def write_section(title, items, merge=True, merge_filter=None):
         nonlocal current_row
         if not items: return
@@ -909,8 +880,10 @@ def generate_excel_bytes(plans, data, summary, info):
                     if val and can_merge_row[r]:
                         span = 1
                         for k in range(r + 1, len(grid)):
-                            if can_merge_row[k] and grid[k][c_idx] == val: span += 1
-                            else: break
+                            if can_merge_row[k] and grid[k][c_idx] == val: 
+                                span += 1
+                            else: 
+                                break
                         if span > 1:
                             ws.merge_cells(start_row=start_row+r, start_column=c_idx+2, end_row=start_row+r+span-1, end_column=c_idx+2)
                             cell = ws.cell(row=start_row+r, column=c_idx+2)
@@ -919,7 +892,15 @@ def generate_excel_bytes(plans, data, summary, info):
                     else: r += 1
         current_row += 2
 
-    write_section("4. A 그룹 ", data['A'])
+    # [상세 항목 호출]
+    # A 그룹에 유전자 병합 필터 적용
+    write_section(
+        "4. A 그룹 ", 
+        data['A'], 
+        merge=True, 
+        merge_filter=lambda it: bool(it.get("_force_merge_gene"))
+    )
+    
     write_section("5. B 그룹 ", data['B'])
     write_section("6. C 그룹 ", data['C'])
     
@@ -944,7 +925,13 @@ def generate_excel_bytes(plans, data, summary, info):
         "values": price_vals
     })
 
-    write_section("7. 기초 장비 및 혈액 검사", equip_data, merge=True, merge_filter=lambda it: bool(it.get("_force_merge_gene")))
+    # 기초장비에도 유전자 병합 필터 적용
+    write_section(
+        "7. 기초 장비 및 혈액 검사", 
+        equip_data, 
+        merge=True, 
+        merge_filter=lambda it: bool(it.get("_force_merge_gene"))
+    )
 
     ws.column_dimensions['A'].width = 32
     for i in range(len(plans)): ws.column_dimensions[get_column_letter(i+2)].width = 20
@@ -953,7 +940,3 @@ def generate_excel_bytes(plans, data, summary, info):
     wb.save(output)
     output.seek(0)
     return output.getvalue()
-
-
-
-
