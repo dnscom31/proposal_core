@@ -218,8 +218,9 @@ def parse_data_from_excel(excel_path, header_row, plans):
                 val = str(row[col_idx]).strip() if row[col_idx] else ""
 
             if is_target_gene:
-                plan_price = plan.get('sort_key', 0)
-                if plan_price == 30:
+                # ✅ 유전자(2-1~2-4)는 모든 금액대(기본 20~100만원)에 동일 적용
+                plan_price = plan.get('sort_key', 0) or 0
+                if 20 <= plan_price <= 100:
                     val = "선택 1"
             else:
                 if current_main_cat in ["A", "B", "C"]:
@@ -899,3 +900,4 @@ def generate_excel_bytes(plans, data, summary, info):
     wb.save(output)
     output.seek(0)
     return output.getvalue()
+
