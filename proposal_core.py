@@ -193,7 +193,10 @@ def load_price_options(excel_path):
     return header_row_idx, price_cols
 
 def parse_data_from_excel(excel_path, header_row, plans):
-    """엑셀 데이터 파싱 (유전자 블록 보정 로직 강화)"""
+    """
+    엑셀 데이터 파싱
+    [핵심 수정] 유전자(2-1~2-4) 항목은 위치 불문하고 'EQUIP' 카테고리로 강제 이동
+    """
     wb = openpyxl.load_workbook(excel_path, data_only=True)
     sheet = wb.active
     
@@ -217,12 +220,11 @@ def parse_data_from_excel(excel_path, header_row, plans):
         col1 = str(row[1]).strip() if row[1] else ""
         col0_clean = col0.replace(" ", "")
 
-        # 카테고리 판별 로직
+        # 1. 엑셀상의 카테고리 흐름 파악
         if "A그룹" in col0_clean: current_main_cat = "A"
         elif "B그룹" in col0_clean: current_main_cat = "B"
         elif "C그룹" in col0_clean: current_main_cat = "C"
         elif "장비검사" in col0_clean or "소화기검사" in col0_clean: current_main_cat = "EQUIP"
-        # [중요] 유전자 검사가 보통 이쪽으로 빠질 수 있음
         elif "혈액" in col0_clean and "소변" in col0_clean: current_main_cat = "COMMON"
 
         if not col1 or col1 in ["검진항목", "내용"]: continue
@@ -233,6 +235,9 @@ def parse_data_from_excel(excel_path, header_row, plans):
 
         if "에피클락" in item_name: continue
 
+        # [중요] 유전자 항목인지 미리 판별
+        is_target_gene = is_gene_block_item(item_name)
+
         row_vals = []
         for idx, plan in enumerate(plans):
             col_idx = plan["col_idx"] - 1
@@ -240,8 +245,11 @@ def parse_data_from_excel(excel_path, header_row, plans):
             if col_idx < len(row):
                 val = str(row[col_idx]).strip() if row[col_idx] else ""
 
-            # 일반 항목 처리 로직
-            if current_main_cat in ["A", "B", "C"]:
+            # [중요] 유전자 항목이면 여기서 값을 강제하지 않고, 일단 엑셀 값(또는 빈값)을 가져감.
+            # (값 보정은 루프가 끝난 뒤 apply_gene_block_fix_30only 에서 일괄 처리)
+            
+            # 유전자 항목이 '아닌' 경우에만 일반 그룹 로직(선택 N 캐싱 등) 적용
+            if not is_target_gene and current_main_cat in ["A", "B", "C"]:
                 cache = fill_cache[idx]
                 if "선택" in val: cache[current_main_cat] = val
                 elif val == "" and cache[current_main_cat]: val = cache[current_main_cat]
@@ -260,18 +268,25 @@ def parse_data_from_excel(excel_path, header_row, plans):
 
         entry = {"category": sub_cat, "name": item_name, "desc": item_desc, "values": row_vals}
         
-        if current_main_cat == "A": parsed_data["A"].append(entry)
-        elif current_main_cat == "B": parsed_data["B"].append(entry)
-        elif current_main_cat == "C": parsed_data["C"].append(entry)
-        elif current_main_cat == "EQUIP": parsed_data["EQUIP"].append(entry)
-        elif current_main_cat == "COMMON": parsed_data["COMMON_BLOOD"].append(entry)
+        # [핵심 수정] 데이터를 담을 리스트 결정
+        # 유전자 항목이면 무조건 EQUIP으로 보내서 A그룹에서 빼냄
+        target_list = None
+        if is_target_gene:
+            target_list = parsed_data["EQUIP"]
+        elif current_main_cat == "A": target_list = parsed_data["A"]
+        elif current_main_cat == "B": target_list = parsed_data["B"]
+        elif current_main_cat == "C": target_list = parsed_data["C"]
+        elif current_main_cat == "EQUIP": target_list = parsed_data["EQUIP"]
+        elif current_main_cat == "COMMON": target_list = parsed_data["COMMON_BLOOD"]
+        
+        if target_list is not None:
+            target_list.append(entry)
 
     wb.close()
 
-    # -------------------------------------------------------------------------
-    # [수정 핵심] 유전자 항목이 EQUIP 혹은 COMMON_BLOOD 어디에 있든 처리하도록 양쪽 다 호출
-    # -------------------------------------------------------------------------
+    # 파싱 후 EQUIP 리스트에 모인 유전자 항목들에 대해 병합 및 값 보정(30만원->선택1) 실행
     apply_gene_block_fix_30only(parsed_data.get("EQUIP", []), plans)
+    # 혹시 COMMON 쪽으로 빠진게 있을 수 있으니 안전장치
     apply_gene_block_fix_30only(parsed_data.get("COMMON_BLOOD", []), plans)
 
     return parsed_data, summary_info
@@ -935,5 +950,6 @@ def generate_excel_bytes(plans, data, summary, info):
     wb.save(output)
     output.seek(0)
     return output.getvalue()
+
 
 
