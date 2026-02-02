@@ -164,11 +164,11 @@ def main():
                 final_plans.append({
                     "name": p_name,
                     "col_idx": opt['col_idx'],
-                    "sort_key": opt.get('sort_key'),   # ✅ 추가
+                    # ✅ [추가] 유전자(2-1~2-4) 등 가격대별 강제 규칙에 필요
+                    "sort_key": opt.get('sort_key'),
                     "a_rule": p_a, "b_rule": p_b, "c_rule": p_c,
                     "price_txt": opt['price_txt']
                 })
-
 
     st.divider()
 
@@ -199,6 +199,7 @@ def main():
 if __name__ == "__main__":
     if check_password():
         main()
+
 
 
 
