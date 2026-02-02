@@ -12,90 +12,104 @@ from openpyxl.worksheet.pagebreak import Break
 # ----------------------------------------------------
 DASH_CHARS = "–—−‐‑‒﹣－ㅡ"
 
+# ----------------------------------------------------
+# [수정] 유전자 블록 인식 및 처리 로직 개선
+# ----------------------------------------------------
+
 def normalize_key(text):
-    """공백/특수 대시/유사문자 등을 표준화하여 비교 안정성 확보"""
+    """공백/특수 대시/유사문자 등을 표준화"""
     if text is None:
         return ""
     s = unicodedata.normalize("NFKC", str(text))
-
-    # 대시처럼 보이는 문자들 통일
     for ch in DASH_CHARS:
         s = s.replace(ch, "-")
-
-    # 자주 섞이는 유사문자(키보드 입력 실수 등) 보정
     s = s.replace("ㅡ", "-")
-
-    # 공백 제거
     s = re.sub(r"\s+", "", s)
-
-    # 맨 앞 글머리표/특수문자 제거(예: '•2-1', '(2-1)')
-    s = re.sub(r"^[^0-9]*", "", s)
+    # [수정] 맨 앞 글머리표 제거 로직을 조금 더 보수적으로 적용 (숫자/문자 유지)
+    # 기존: s = re.sub(r"^[^0-9]*", "", s) -> 2-1이 아닌 텍스트가 날아갈 수 있음
     return s
 
-
 def is_gene_block_item(name):
-    """'2-1~2-4'로 시작하고 '유전자'가 포함된 항목인지 판별"""
-    key = normalize_key(name)
-    return ("유전자" in key) and bool(re.match(r"^2[-._]*([1-4])", key))
-
-
-
-def extract_gene_num(name):
-    """유전자 항목의 번호(1~4)를 추출. 실패 시 None."""
+    """
+    유전자 2-1~2-4 항목인지 판별 (조건 완화)
+    - '유전자' 포함
+    - '선천적'(C그룹) 제외
+    - 2-X 패턴이 있거나, 없더라도 유전자 키워드가 확실하면 포함
+    """
     key = normalize_key(name)
     if "유전자" not in key:
-        return None
-    m = re.match(r"^2[-._]*([1-4])", key)
-    return int(m.group(1)) if m else None
+        return False
+    if "선천적" in key: # C그룹 항목 제외
+        return False
+    
+    # 2-1, 2.1, 2_1 등의 패턴 확인 (선택적)
+    # 번호가 없어도 유전자 항목이 연속되면 잡기 위해 여기서는 True를 리턴하는 범위를 넓힘
+    return True
 
+def extract_gene_num(name):
+    """유전자 항목의 번호(1~4)를 추출 시도"""
+    key = normalize_key(name)
+    # 2-1, 2.1, 2_1, (2-1) 등 다양한 패턴 대응
+    match = re.search(r"2[-._]*([1-4])", key)
+    if match:
+        return int(match.group(1))
+    return None
 
 def find_gene_block_indices(items):
-    """EQUIP 항목 중 '유전자 4행(2-1~2-4)'에 해당하는 행 인덱스를 찾는다.
-    - 1순위: 2-1~2-4 번호가 모두 잡히는 경우
-    - 2순위: '유전자'가 포함된 행 중 연속된 4개
-    - 3순위: '유전자' 포함 행이 4개 이상이면 앞 4개
     """
-    num_to_idx = {}
+    EQUIP 항목 중 '유전자 4행'에 해당하는 인덱스 찾기 (로직 강화)
+    """
+    # 1. '유전자' 키워드가 있고 '선천적'이 아닌 모든 항목의 인덱스 수집
+    gene_idxs = []
     for i, it in enumerate(items):
-        num = extract_gene_num(it.get("name", ""))
-        if num is not None:
-            num_to_idx[num] = i
+        name = it.get("name", "")
+        if is_gene_block_item(name):
+            gene_idxs.append(i)
 
-    if all(n in num_to_idx for n in (1, 2, 3, 4)):
-        return [num_to_idx[n] for n in (1, 2, 3, 4)]
-
-    gene_idxs = [i for i, it in enumerate(items) if "유전자" in normalize_key(it.get("name", ""))]
+    # 2. 항목이 4개 미만이면 처리 불가
     if len(gene_idxs) < 4:
         return []
 
-    # 연속된 4개 찾기
+    # 3. 번호(1~4)가 명확한 경우 우선 매핑
+    num_to_idx = {}
+    for idx in gene_idxs:
+        num = extract_gene_num(items[idx].get("name", ""))
+        if num is not None:
+            num_to_idx[num] = idx
+    
+    if all(n in num_to_idx for n in (1, 2, 3, 4)):
+        return [num_to_idx[n] for n in (1, 2, 3, 4)]
+
+    # 4. 번호 매핑 실패 시, 연속된 4개 블록 탐색 (인덱스가 연속적인지)
     for start in range(len(gene_idxs) - 3):
         block = gene_idxs[start:start + 4]
+        # 인덱스가 1씩 증가하는지 확인 (중간에 다른 항목이 없는지)
         if block[0] + 1 == block[1] and block[1] + 1 == block[2] and block[2] + 1 == block[3]:
             return block
 
-    # 연속이 아니어도 4개 이상이면 앞 4개 사용(최후의 안전장치)
+    # 5. 연속되지 않더라도 유전자 항목이 4개 이상 발견되면 순서대로 4개 반환 (최후 수단)
     return gene_idxs[:4]
 
-
 def apply_gene_block_fix_30only(equip_items, plans):
-    """유전자(2-1~2-4) 블록 보정:
-    - 30만원 플랜 열에서만 4개 행 모두 '선택 1'로 채움(병합 가능해짐)
+    """
+    유전자(2-1~2-4) 블록 보정:
+    - 30만원 플랜 열에서만 4개 행 모두 '선택 1'로 강제 설정
     - 병합 필터용 플래그(_force_merge_gene) 설정
     """
     idxs = find_gene_block_indices(equip_items)
     if not idxs:
         return False
 
-    # 병합 플래그
-    for i in idxs:
-        equip_items[i]["_force_merge_gene"] = True
+    # 30만원 플랜 인덱스 찾기
+    p_indices = [i for i, p in enumerate(plans) if p.get("sort_key", 0) == 30]
 
-    # 30만원 플랜에서만 값 강제
-    for p_idx, plan in enumerate(plans):
-        if plan.get("sort_key", 0) == 30:
-            for i in idxs:
-                equip_items[i]["values"][p_idx] = "선택 1"
+    for i in idxs:
+        # 병합 플래그 설정
+        equip_items[i]["_force_merge_gene"] = True
+        
+        # 30만원 플랜 컬럼 값을 '선택 1'로 강제 덮어쓰기 (병합 조건 충족)
+        for p_idx in p_indices:
+            equip_items[i]["values"][p_idx] = "선택 1"
 
     return True
 
@@ -924,3 +938,4 @@ def generate_excel_bytes(plans, data, summary, info):
     wb.save(output)
     output.seek(0)
     return output.getvalue()
+
