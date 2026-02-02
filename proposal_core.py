@@ -193,7 +193,7 @@ def load_price_options(excel_path):
     return header_row_idx, price_cols
 
 def parse_data_from_excel(excel_path, header_row, plans):
-    """엑셀 데이터 파싱"""
+    """엑셀 데이터 파싱 (유전자 블록 보정 로직 강화)"""
     wb = openpyxl.load_workbook(excel_path, data_only=True)
     sheet = wb.active
     
@@ -210,16 +210,19 @@ def parse_data_from_excel(excel_path, header_row, plans):
 
     fill_cache = {i: {"A": None, "B": None, "C": None} for i in range(len(plans))}
     current_main_cat = ""
+    
     for row in sheet.iter_rows(min_row=header_row + 1, values_only=True):
         if not row or len(row) < 2: continue
         col0 = str(row[0]).strip() if row[0] else ""
         col1 = str(row[1]).strip() if row[1] else ""
         col0_clean = col0.replace(" ", "")
 
+        # 카테고리 판별 로직
         if "A그룹" in col0_clean: current_main_cat = "A"
         elif "B그룹" in col0_clean: current_main_cat = "B"
         elif "C그룹" in col0_clean: current_main_cat = "C"
         elif "장비검사" in col0_clean or "소화기검사" in col0_clean: current_main_cat = "EQUIP"
+        # [중요] 유전자 검사가 보통 이쪽으로 빠질 수 있음
         elif "혈액" in col0_clean and "소변" in col0_clean: current_main_cat = "COMMON"
 
         if not col1 or col1 in ["검진항목", "내용"]: continue
@@ -228,11 +231,8 @@ def parse_data_from_excel(excel_path, header_row, plans):
         item_desc = str(row[2]).strip() if row[2] else ""
         sub_cat = col0 if current_main_cat == "EQUIP" and col0 else ""
 
-        # [수정됨] 에피클락 제거 로직
-        if "에피클락" in item_name:
-            continue
-        # [수정] 유전자(2-1~2-4) 항목 판별: 공백/특수대시 차이를 흡수하여 인식 안정화
-        is_target_gene = is_gene_block_item(item_name)
+        if "에피클락" in item_name: continue
+
         row_vals = []
         for idx, plan in enumerate(plans):
             col_idx = plan["col_idx"] - 1
@@ -240,27 +240,20 @@ def parse_data_from_excel(excel_path, header_row, plans):
             if col_idx < len(row):
                 val = str(row[col_idx]).strip() if row[col_idx] else ""
 
-            # [수정됨] 유전자 항목인 경우 가격 조건에 따라 값 강제 변경
-            if is_target_gene:
-                plan_price = plan.get('sort_key', 0)
-                if plan_price == 30:
-                    val = "선택 1"
-                # 30만원이 아니면 엑셀 원래 값 유지
-            else:
-                # 일반 항목 처리 로직 (선택 N 캐싱 등)
-                if current_main_cat in ["A", "B", "C"]:
-                    cache = fill_cache[idx]
-                    if "선택" in val: cache[current_main_cat] = val
-                    elif val == "" and cache[current_main_cat]: val = cache[current_main_cat]
-                    elif val != "": cache[current_main_cat] = None
-                    
-                    if "선택" in val:
-                        rule = ""
-                        if current_main_cat == "A": rule = plan.get('a_rule', '')
-                        elif current_main_cat == "B": rule = plan.get('b_rule', '')
-                        elif current_main_cat == "C": rule = plan.get('c_rule', '')
-                        if rule:
-                            val = "" if rule == "-" else rule
+            # 일반 항목 처리 로직
+            if current_main_cat in ["A", "B", "C"]:
+                cache = fill_cache[idx]
+                if "선택" in val: cache[current_main_cat] = val
+                elif val == "" and cache[current_main_cat]: val = cache[current_main_cat]
+                elif val != "": cache[current_main_cat] = None
+                
+                if "선택" in val:
+                    rule = ""
+                    if current_main_cat == "A": rule = plan.get('a_rule', '')
+                    elif current_main_cat == "B": rule = plan.get('b_rule', '')
+                    elif current_main_cat == "C": rule = plan.get('c_rule', '')
+                    if rule:
+                        val = "" if rule == "-" else rule
 
             if "미선택" in val: val = ""
             row_vals.append(val)
@@ -273,10 +266,14 @@ def parse_data_from_excel(excel_path, header_row, plans):
         elif current_main_cat == "EQUIP": parsed_data["EQUIP"].append(entry)
         elif current_main_cat == "COMMON": parsed_data["COMMON_BLOOD"].append(entry)
 
-    # [추가] 유전자(2-1~2-4) 블록 보정: 30만원 플랜에서만 선택 1 채우고 병합 플래그 부여
-    apply_gene_block_fix_30only(parsed_data.get("EQUIP", []), plans)
-
     wb.close()
+
+    # -------------------------------------------------------------------------
+    # [수정 핵심] 유전자 항목이 EQUIP 혹은 COMMON_BLOOD 어디에 있든 처리하도록 양쪽 다 호출
+    # -------------------------------------------------------------------------
+    apply_gene_block_fix_30only(parsed_data.get("EQUIP", []), plans)
+    apply_gene_block_fix_30only(parsed_data.get("COMMON_BLOOD", []), plans)
+
     return parsed_data, summary_info
 
 def render_html_string(plans, data, summary, info):
@@ -938,4 +935,5 @@ def generate_excel_bytes(plans, data, summary, info):
     wb.save(output)
     output.seek(0)
     return output.getvalue()
+
 
