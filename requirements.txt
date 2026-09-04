@@ -2,3 +2,6 @@ streamlit
 openpyxl
 pandas
 extra-streamlit-components
+Pillow
+reportlab
+qrcode[pil]
