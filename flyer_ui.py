@@ -8,7 +8,23 @@ from typing import Any, Dict
 import streamlit as st
 
 from flyer_data import normalize_flyer_data, dumps_flyer_json
+import flyer_engine as _flyer_engine
 from flyer_engine import FlyerEngine, THEMES
+
+# ReportLab은 CFF 방식 OTF를 지원하지 않으므로 TrueType Pretendard를 사용합니다.
+# 파일 확장자보다 실제 내부 포맷을 기준으로 읽기 때문에 기존 캐시 파일명(.otf)은 유지해도 됩니다.
+_flyer_engine.FONT_URLS.update({
+    "regular": "https://raw.githubusercontent.com/wefonts/Pretendard/main/Pretendard-Regular.ttf",
+    "medium": "https://raw.githubusercontent.com/wefonts/Pretendard/main/Pretendard-Medium.ttf",
+    "semibold": "https://raw.githubusercontent.com/wefonts/Pretendard/main/Pretendard-SemiBold.ttf",
+    "bold": "https://raw.githubusercontent.com/wefonts/Pretendard/main/Pretendard-Bold.ttf",
+})
+# 이전 배포에서 CFF OTF가 임시 폴더에 남아 있으면 TTF로 다시 받도록 제거합니다.
+try:
+    for _cached in _flyer_engine._font_dir().glob("Pretendard-*.otf"):
+        _cached.unlink(missing_ok=True)
+except Exception:
+    pass
 
 
 def _lines(value):
