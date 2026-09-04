@@ -10,7 +10,13 @@ from flyer_data import (
     build_flyer_data_from_quote,
     normalize_flyer_data,
 )
-from flyer_ui import embed_quote_payload, extract_quote_payload, render_flyer_editor
+from flyer_ui import (
+    embed_quote_payload,
+    extract_quote_payload,
+    embed_flyer_in_excel,
+    extract_flyer_from_excel,
+    render_flyer_editor,
+)
 
 EXCEL_FILENAME = "2026 건강검진 견적서_표준_수정.xlsx"
 
@@ -69,11 +75,11 @@ def _clear_widget_prefix(prefix: str):
 
 def _render_standalone_flyer():
     st.title("📰 건강검진 안내문 제작기")
-    st.caption("안내문만 직접 만들거나, 이 견적서 페이지에서 생성한 HTML을 업로드해 플랜명·금액을 자동 복원할 수 있습니다.")
+    st.caption("안내문만 직접 만들거나, 이 견적서 페이지에서 생성한 HTML/XLSX를 업로드해 플랜명·금액을 자동 복원할 수 있습니다.")
 
     start_mode = st.radio(
         "안내문 시작 방식",
-        ["새 안내문", "견적서 HTML 불러오기", "안내문 JSON 불러오기"],
+        ["새 안내문", "견적서 HTML 불러오기", "견적서 엑셀 불러오기", "안내문 JSON 불러오기"],
         horizontal=True,
         key="standalone_mode",
     )
@@ -93,6 +99,20 @@ def _render_standalone_flyer():
                 st.success("견적서의 플랜명·금액·A/B/C 구성을 자동으로 불러왔습니다.")
             else:
                 st.error("안내문 연동 데이터가 없는 예전 HTML입니다. 현재 견적서 생성기에서 새로 생성한 HTML을 사용해주세요.")
+
+    elif start_mode == "견적서 엑셀 불러오기":
+        uploaded = st.file_uploader(
+            "이 견적서 페이지에서 생성한 XLSX 파일",
+            type=["xlsx"],
+            key="standalone_xlsx",
+        )
+        if uploaded:
+            loaded = extract_flyer_from_excel(uploaded.getvalue())
+            if loaded:
+                data = loaded
+                st.success("견적서 엑셀의 플랜명·금액·A/B/C 구성을 자동으로 불러왔습니다.")
+            else:
+                st.error("안내문 연동 데이터가 없는 예전 엑셀입니다. 현재 견적서 생성기에서 새로 생성한 엑셀을 사용해주세요.")
 
     elif start_mode == "안내문 JSON 불러오기":
         uploaded = st.file_uploader("flyer_data.json", type=["json"], key="standalone_json")
@@ -167,7 +187,7 @@ def main():
         return
 
     st.subheader("3. 세부 플랜 설정")
-    st.info("여기에서 입력한 플랜명과 금액이 안내문의 기존 '건강형/소망형/믿음형/행복형/사랑형' 자리를 자동으로 대체합니다.")
+    st.info("여기에서 입력한 플랜명과 선택한 금액이 안내문의 기존 '건강형/소망형/믿음형/행복형/사랑형' 자리를 자동으로 대체합니다.")
 
     final_plans = []
 
@@ -234,6 +254,7 @@ def main():
                 html_str = render_html_string(final_plans, data, summary, info)
                 html_str = embed_quote_payload(html_str, flyer_data)
                 excel_bytes = generate_excel_bytes(final_plans, data, summary, info)
+                excel_bytes = embed_flyer_in_excel(excel_bytes, flyer_data)
 
                 _clear_widget_prefix("quote_flyer")
                 st.session_state["quote_result"] = {
@@ -273,7 +294,7 @@ def main():
                     filename_html,
                     "text/html",
                 )
-            st.caption("다운로드한 HTML에는 안내문용 플랜명·금액·A/B/C 데이터가 함께 저장됩니다. '안내문만 제작' 모드에서 다시 업로드할 수 있습니다.")
+            st.caption("다운로드한 HTML과 XLSX에는 안내문용 플랜명·금액·A/B/C 데이터가 함께 저장됩니다. '안내문만 제작' 모드에서 다시 업로드할 수 있습니다.")
 
         with tab3:
             render_flyer_editor(result["flyer_data"], prefix="quote_flyer")
