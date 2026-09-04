@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import io
 import json
 import re
 from typing import Any, Dict
 
+import openpyxl
 import streamlit as st
 
 from flyer_data import normalize_flyer_data, dumps_flyer_json
@@ -12,19 +14,19 @@ import flyer_engine as _flyer_engine
 from flyer_engine import FlyerEngine, THEMES
 
 # ReportLab은 CFF 방식 OTF를 지원하지 않으므로 TrueType Pretendard를 사용합니다.
-# 파일 확장자보다 실제 내부 포맷을 기준으로 읽기 때문에 기존 캐시 파일명(.otf)은 유지해도 됩니다.
 _flyer_engine.FONT_URLS.update({
     "regular": "https://raw.githubusercontent.com/wefonts/Pretendard/main/Pretendard-Regular.ttf",
     "medium": "https://raw.githubusercontent.com/wefonts/Pretendard/main/Pretendard-Medium.ttf",
     "semibold": "https://raw.githubusercontent.com/wefonts/Pretendard/main/Pretendard-SemiBold.ttf",
     "bold": "https://raw.githubusercontent.com/wefonts/Pretendard/main/Pretendard-Bold.ttf",
 })
-# 이전 배포에서 CFF OTF가 임시 폴더에 남아 있으면 TTF로 다시 받도록 제거합니다.
 try:
     for _cached in _flyer_engine._font_dir().glob("Pretendard-*.otf"):
         _cached.unlink(missing_ok=True)
 except Exception:
     pass
+
+HIDDEN_SHEET = "_NK_FLYER_DATA"
 
 
 def _lines(value):
@@ -57,6 +59,36 @@ def extract_quote_payload(html: str):
     except Exception:
         return None
     return normalize_flyer_data(value) if isinstance(value, dict) else None
+
+
+def embed_flyer_in_excel(excel_bytes: bytes, flyer_data: Dict[str, Any]) -> bytes:
+    """다운로드 견적서 XLSX에 안내문 데이터를 숨김 시트로 저장합니다."""
+    src = io.BytesIO(excel_bytes)
+    wb = openpyxl.load_workbook(src)
+    if HIDDEN_SHEET in wb.sheetnames:
+        del wb[HIDDEN_SHEET]
+    ws = wb.create_sheet(HIDDEN_SHEET)
+    ws["A1"] = json.dumps(normalize_flyer_data(flyer_data), ensure_ascii=False, separators=(",", ":"))
+    ws.sheet_state = "veryHidden"
+    out = io.BytesIO()
+    wb.save(out)
+    wb.close()
+    return out.getvalue()
+
+
+def extract_flyer_from_excel(excel_bytes: bytes):
+    """이 앱에서 생성한 XLSX의 숨김 시트에서 안내문 데이터를 복원합니다."""
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(excel_bytes), read_only=False, data_only=False)
+        if HIDDEN_SHEET not in wb.sheetnames:
+            wb.close()
+            return None
+        raw = wb[HIDDEN_SHEET]["A1"].value
+        wb.close()
+        value = json.loads(str(raw or ""))
+        return normalize_flyer_data(value) if isinstance(value, dict) else None
+    except Exception:
+        return None
 
 
 def render_flyer_editor(initial: Dict[str, Any], prefix: str = "flyer", allow_import: bool = False):
